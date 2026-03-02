@@ -254,6 +254,36 @@ Xác nhận module hoạt động ổn định cho:
   - Collection chạy được với token đúng.
   - Kết quả API khớp mô tả spec.
 
+### TC-27 API token rotation and deactivation
+
+- Steps:
+  1. Trong dashboard, tạo token mới bằng `Rotate/New API Token`.
+  2. Gọi API bằng token mới.
+  3. Deactivate token vừa tạo.
+  4. Gọi lại API bằng token đó.
+- Expected:
+  - Trước deactivate: gọi API thành công.
+  - Sau deactivate: nhận 401.
+
+### TC-28 API resource coverage (notes/followups/labels)
+
+- Steps:
+  1. POST tạo note/followup/label qua API.
+  2. GET list từng resource.
+  3. PUT update từng resource.
+  4. DELETE resource test.
+- Expected:
+  - CRUD hoạt động đúng cho cả 3 resource mới.
+
+### TC-29 API cleanup cron
+
+- Steps:
+  1. Tạo traffic API để sinh rate-limit rows.
+  2. Chạy Daily cron hoặc bấm cleanup thủ công.
+- Expected:
+  - Bản ghi rate-limit cũ được dọn.
+  - Có log `cleanup_api_limits`.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:

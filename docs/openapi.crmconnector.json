@@ -30,7 +30,10 @@
               "enum": [
                 "leads",
                 "deals",
-                "campaigns"
+                "campaigns",
+                "notes",
+                "followups",
+                "labels"
               ]
             }
           },
@@ -67,7 +70,10 @@
               "enum": [
                 "leads",
                 "deals",
-                "campaigns"
+                "campaigns",
+                "notes",
+                "followups",
+                "labels"
               ]
             }
           }
@@ -100,7 +106,10 @@
               "enum": [
                 "leads",
                 "deals",
-                "campaigns"
+                "campaigns",
+                "notes",
+                "followups",
+                "labels"
               ]
             }
           },
@@ -141,7 +150,10 @@
               "enum": [
                 "leads",
                 "deals",
-                "campaigns"
+                "campaigns",
+                "notes",
+                "followups",
+                "labels"
               ]
             }
           },

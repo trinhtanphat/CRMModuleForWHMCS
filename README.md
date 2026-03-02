@@ -101,6 +101,11 @@ API endpoint:
 
 - `modules/addons/crmconnector/api.php`
 
+API token management:
+
+- Rotate/deactivate tokens in module dashboard (`API Management`)
+- Configure TTL via `API Token TTL Days`
+
 API specs and tools:
 
 - `docs/openapi.crmconnector.json`

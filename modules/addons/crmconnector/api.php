@@ -15,12 +15,12 @@ function crmconnector_api_handle_request()
     header('Content-Type: application/json; charset=utf-8');
 
     $token = crmconnector_api_extract_token();
-    $configuredToken = trim((string) crmconnector_get_setting('api_token', ''));
-    if ($configuredToken === '') {
-        crmconnector_api_response(503, ['success' => false, 'message' => 'API token is not configured']);
+    if ($token === '') {
+        crmconnector_api_response(401, ['success' => false, 'message' => 'Unauthorized']);
     }
 
-    if ($token === '' || !hash_equals($configuredToken, $token)) {
+    $tokenMeta = crmconnector_api_validate_token($token);
+    if (!$tokenMeta) {
         crmconnector_api_response(401, ['success' => false, 'message' => 'Unauthorized']);
     }
 
@@ -37,7 +37,7 @@ function crmconnector_api_handle_request()
     $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
     $id = (int) ($_GET['id'] ?? 0);
 
-    if (!in_array($resource, ['leads', 'deals', 'campaigns'], true)) {
+    if (!in_array($resource, ['leads', 'deals', 'campaigns', 'notes', 'followups', 'labels'], true)) {
         crmconnector_api_response(400, ['success' => false, 'message' => 'Invalid resource']);
     }
 
@@ -86,6 +86,18 @@ function crmconnector_api_table_for_resource($resource)
 
     if ($resource === 'deals') {
         return CRMCONNECTOR_DEALS_TABLE;
+    }
+
+    if ($resource === 'notes') {
+        return CRMCONNECTOR_NOTES_TABLE;
+    }
+
+    if ($resource === 'followups') {
+        return CRMCONNECTOR_FOLLOWUPS_TABLE;
+    }
+
+    if ($resource === 'labels') {
+        return CRMCONNECTOR_LABELS_TABLE;
     }
 
     return CRMCONNECTOR_CAMPAIGNS_TABLE;
@@ -240,6 +252,101 @@ function crmconnector_api_normalize_payload($resource, array $payload, $isUpdate
         }
     }
 
+    if ($resource === 'notes') {
+        if (!$isUpdate || array_key_exists('userid', $payload)) {
+            $userId = (int) ($payload['userid'] ?? 0);
+            if ($userId <= 0 && !$isUpdate) {
+                crmconnector_api_response(422, ['success' => false, 'message' => 'Note userid is required']);
+            }
+            if ($userId > 0) {
+                $record['userid'] = $userId;
+            }
+        }
+
+        if (!$isUpdate || array_key_exists('note', $payload)) {
+            $noteContent = trim((string) ($payload['note'] ?? ''));
+            if ($noteContent === '' && !$isUpdate) {
+                crmconnector_api_response(422, ['success' => false, 'message' => 'Note content is required']);
+            }
+            if ($noteContent !== '') {
+                $record['note'] = $noteContent;
+            }
+        }
+
+        if (array_key_exists('adminid', $payload)) {
+            $adminId = (int) $payload['adminid'];
+            $record['adminid'] = $adminId > 0 ? $adminId : null;
+        } elseif (!$isUpdate) {
+            $record['adminid'] = null;
+        }
+    }
+
+    if ($resource === 'followups') {
+        if (!$isUpdate || array_key_exists('title', $payload)) {
+            $title = trim((string) ($payload['title'] ?? ''));
+            if ($title === '' && !$isUpdate) {
+                crmconnector_api_response(422, ['success' => false, 'message' => 'Followup title is required']);
+            }
+            if ($title !== '') {
+                $record['title'] = $title;
+            }
+        }
+
+        if (array_key_exists('userid', $payload)) {
+            $userId = (int) $payload['userid'];
+            $record['userid'] = $userId > 0 ? $userId : null;
+        } elseif (!$isUpdate) {
+            $record['userid'] = null;
+        }
+
+        if (array_key_exists('lead_id', $payload)) {
+            $leadId = (int) $payload['lead_id'];
+            $record['lead_id'] = $leadId > 0 ? $leadId : null;
+        } elseif (!$isUpdate) {
+            $record['lead_id'] = null;
+        }
+
+        if (array_key_exists('channel', $payload)) {
+            $channel = trim((string) $payload['channel']);
+            $record['channel'] = $channel !== '' ? $channel : 'email';
+        } elseif (!$isUpdate) {
+            $record['channel'] = 'email';
+        }
+
+        if (array_key_exists('status', $payload)) {
+            $status = trim((string) $payload['status']);
+            $record['status'] = $status !== '' ? $status : 'pending';
+        } elseif (!$isUpdate) {
+            $record['status'] = 'pending';
+        }
+
+        if (array_key_exists('due_at', $payload)) {
+            $dueAt = trim((string) $payload['due_at']);
+            $record['due_at'] = $dueAt !== '' ? $dueAt : null;
+        } elseif (!$isUpdate) {
+            $record['due_at'] = null;
+        }
+    }
+
+    if ($resource === 'labels') {
+        if (!$isUpdate || array_key_exists('name', $payload)) {
+            $name = trim((string) ($payload['name'] ?? ''));
+            if ($name === '' && !$isUpdate) {
+                crmconnector_api_response(422, ['success' => false, 'message' => 'Label name is required']);
+            }
+            if ($name !== '') {
+                $record['name'] = $name;
+            }
+        }
+
+        if (array_key_exists('color', $payload)) {
+            $color = trim((string) $payload['color']);
+            $record['color'] = $color !== '' ? $color : '#007bff';
+        } elseif (!$isUpdate) {
+            $record['color'] = '#007bff';
+        }
+    }
+
     if ($isUpdate) {
         $record['updated_at'] = $now;
     } else {
@@ -268,6 +375,40 @@ function crmconnector_api_extract_token()
     }
 
     return trim((string) ($_GET['token'] ?? $_POST['token'] ?? ''));
+}
+
+function crmconnector_api_validate_token($token)
+{
+    $token = trim((string) $token);
+    if ($token === '') {
+        return null;
+    }
+
+    $tokenHash = hash('sha256', $token);
+    $now = date('Y-m-d H:i:s');
+    $row = Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)
+        ->where('token_hash', $tokenHash)
+        ->where('is_active', 'yes')
+        ->first();
+
+    if ($row) {
+        if (!empty($row->expires_at) && (string) $row->expires_at < $now) {
+            return null;
+        }
+
+        Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)
+            ->where('id', (int) $row->id)
+            ->update(['last_used_at' => Capsule::raw('NOW()')]);
+
+        return $row;
+    }
+
+    $configuredToken = trim((string) crmconnector_get_setting('api_token', ''));
+    if ($configuredToken !== '' && hash_equals($configuredToken, $token)) {
+        return (object) ['id' => 0, 'name' => 'legacy-setting-token'];
+    }
+
+    return null;
 }
 
 function crmconnector_api_payload()

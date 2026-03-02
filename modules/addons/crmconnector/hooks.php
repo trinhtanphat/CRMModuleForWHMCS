@@ -21,7 +21,8 @@ add_hook('DailyCronJob', 1, function () {
     if (($settings['auto_sync'] ?? '') !== 'on') {
         $processedFollowups = crmconnector_process_due_followups();
         $executedRules = crmconnector_process_automation_rules();
-        crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules);
+        $cleanedLimits = crmconnector_cleanup_api_rate_limits();
+        crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules . ', API Cleanup: ' . $cleanedLimits);
         return;
     }
 
@@ -35,7 +36,8 @@ add_hook('DailyCronJob', 1, function () {
 
     $processedFollowups = crmconnector_process_due_followups();
     $executedRules = crmconnector_process_automation_rules();
-    crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules);
+    $cleanedLimits = crmconnector_cleanup_api_rate_limits();
+    crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules . ', API Cleanup: ' . $cleanedLimits);
 });
 
 function crmconnector_handle_auto_sync($userId)

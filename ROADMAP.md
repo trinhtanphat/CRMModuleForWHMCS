@@ -27,6 +27,9 @@ Safe route: implement original code that achieves similar outcomes (feature pari
   - Daily cron processing for due follow-ups and automation rule checks
   - Campaign filter by lead status
   - Label board with drag-drop lead movement
+  - API CRUD expanded to notes/followups/labels
+  - API token rotation with expiry and deactivation
+  - API usage dashboard metrics and rate-limit cleanup
 
 ## All-Phase Plan
 

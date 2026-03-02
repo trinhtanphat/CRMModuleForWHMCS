@@ -24,8 +24,9 @@ const CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE = 'mod_crmconnector_lead_campaigns';
 const CRMCONNECTOR_LEAD_LABELS_TABLE = 'mod_crmconnector_lead_labels';
 const CRMCONNECTOR_PERMISSIONS_TABLE = 'mod_crmconnector_permissions';
 const CRMCONNECTOR_API_RATE_LIMITS_TABLE = 'mod_crmconnector_api_rate_limits';
-const CRMCONNECTOR_MODULE_VERSION = '1.3.0';
-const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.3';
+const CRMCONNECTOR_API_TOKENS_TABLE = 'mod_crmconnector_api_tokens';
+const CRMCONNECTOR_MODULE_VERSION = '1.4.0';
+const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.4';
 
 function crmconnector_config()
 {
@@ -89,6 +90,13 @@ function crmconnector_config()
                 'Size' => '6',
                 'Default' => '60',
                 'Description' => 'Max API requests per minute per token and IP.',
+            ],
+            'api_token_ttl_days' => [
+                'FriendlyName' => 'API Token TTL Days',
+                'Type' => 'text',
+                'Size' => '6',
+                'Default' => '90',
+                'Description' => 'Expiry in days for rotated API tokens.',
             ],
         ],
     ];
@@ -263,6 +271,19 @@ function crmconnector_activate()
             });
         }
 
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_API_TOKENS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_API_TOKENS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('name', 120);
+                $table->string('token_hash', 64)->unique();
+                $table->string('last4', 4);
+                $table->string('is_active', 5)->default('yes');
+                $table->timestamp('created_at')->nullable();
+                $table->timestamp('expires_at')->nullable();
+                $table->timestamp('last_used_at')->nullable();
+            });
+        }
+
         crmconnector_set_setting('schema_version', CRMCONNECTOR_SCHEMA_VERSION);
 
         return [
@@ -434,6 +455,18 @@ function crmconnector_output($vars)
 
     $permissionRules = crmconnector_get_permission_rules();
     $actionKeys = crmconnector_get_action_keys();
+    $apiTokens = Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(30)
+        ->get();
+    $apiUsage24h = Capsule::table(CRMCONNECTOR_LOGS_TABLE)
+        ->where('action', 'like', 'api_%')
+        ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-24 hours')))
+        ->count();
+    $apiUsage1h = Capsule::table(CRMCONNECTOR_LOGS_TABLE)
+        ->where('action', 'like', 'api_%')
+        ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-1 hour')))
+        ->count();
     $selectedCampaignId = (int) ($_GET['filter_campaign_id'] ?? 0);
     $selectedLeadStatus = trim((string) ($_GET['filter_lead_status'] ?? ''));
 
@@ -875,6 +908,46 @@ function crmconnector_output($vars)
         echo '<tr><td colspan="99">No admins found.</td></tr>';
     }
     echo '</tbody></table>';
+
+    echo '<h3>API Management</h3>';
+    echo '<p><strong>Usage last hour:</strong> ' . (int) $apiUsage1h . ' | <strong>Usage last 24h:</strong> ' . (int) $apiUsage24h . '</p>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="rotate_api_token">';
+    echo '<label>Name: <input type="text" name="api_token_name" value="default" required></label> ';
+    echo '<button type="submit" class="btn btn-primary">Rotate/New API Token</button>';
+    echo '</form>';
+
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="cleanup_api_limits">';
+    echo '<button type="submit" class="btn btn-default">Cleanup API Rate Limits</button>';
+    echo '</form>';
+
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Last4</th><th>Active</th><th>Created</th><th>Expires</th><th>Last Used</th><th>Action</th></tr></thead><tbody>';
+    foreach ($apiTokens as $apiToken) {
+        echo '<tr>';
+        echo '<td>' . (int) $apiToken->id . '</td>';
+        echo '<td>' . htmlspecialchars((string) $apiToken->name) . '</td>';
+        echo '<td>' . htmlspecialchars((string) $apiToken->last4) . '</td>';
+        echo '<td>' . htmlspecialchars((string) $apiToken->is_active) . '</td>';
+        echo '<td>' . htmlspecialchars((string) ($apiToken->created_at ?? '')) . '</td>';
+        echo '<td>' . htmlspecialchars((string) ($apiToken->expires_at ?? '')) . '</td>';
+        echo '<td>' . htmlspecialchars((string) ($apiToken->last_used_at ?? '')) . '</td>';
+        echo '<td>';
+        echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="display:inline;">';
+        echo generate_token('form');
+        echo '<input type="hidden" name="crmconnector_action" value="deactivate_api_token">';
+        echo '<input type="hidden" name="api_token_id" value="' . (int) $apiToken->id . '">';
+        echo '<button type="submit" class="btn btn-xs btn-danger">Deactivate</button>';
+        echo '</form>';
+        echo '</td>';
+        echo '</tr>';
+    }
+    if (count($apiTokens) === 0) {
+        echo '<tr><td colspan="8">No API tokens created yet.</td></tr>';
+    }
+    echo '</tbody></table>';
 }
 
 function crmconnector_handle_post_action(array $vars)
@@ -970,6 +1043,18 @@ function crmconnector_handle_post_action(array $vars)
 
     if ($action === 'move_lead_label') {
         return crmconnector_move_lead_label();
+    }
+
+    if ($action === 'rotate_api_token') {
+        return crmconnector_rotate_api_token();
+    }
+
+    if ($action === 'deactivate_api_token') {
+        return crmconnector_deactivate_api_token();
+    }
+
+    if ($action === 'cleanup_api_limits') {
+        return crmconnector_cleanup_api_rate_limits();
     }
 
     return 'No action executed.';
@@ -1595,6 +1680,66 @@ function crmconnector_render_label_board($labels, $leadLabelAssignments)
     echo '</script>';
 }
 
+function crmconnector_rotate_api_token()
+{
+    $name = trim((string) ($_POST['api_token_name'] ?? 'default'));
+    if ($name === '') {
+        $name = 'default';
+    }
+
+    $tokenPlain = bin2hex(random_bytes(24));
+    $tokenHash = hash('sha256', $tokenPlain);
+    $last4 = substr($tokenPlain, -4);
+    $ttlDays = (int) crmconnector_get_setting('api_token_ttl_days', '90');
+    $expiresAt = $ttlDays > 0 ? date('Y-m-d H:i:s', strtotime('+' . $ttlDays . ' days')) : null;
+
+    Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)->insert([
+        'name' => $name,
+        'token_hash' => $tokenHash,
+        'last4' => $last4,
+        'is_active' => 'yes',
+        'created_at' => Capsule::raw('NOW()'),
+        'expires_at' => $expiresAt,
+        'last_used_at' => null,
+    ]);
+
+    crmconnector_log(null, 'rotate_api_token', 'completed', 'Created API token: ' . $name . ' (last4 ' . $last4 . ')');
+    return 'New API token created. Copy now (shown once): ' . $tokenPlain;
+}
+
+function crmconnector_deactivate_api_token()
+{
+    $tokenId = (int) ($_POST['api_token_id'] ?? 0);
+    if ($tokenId <= 0) {
+        return 'Invalid API token ID.';
+    }
+
+    $updated = Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)
+        ->where('id', $tokenId)
+        ->update([
+            'is_active' => 'no',
+            'last_used_at' => Capsule::raw('NOW()'),
+        ]);
+
+    if (!$updated) {
+        return 'API token not found or unchanged.';
+    }
+
+    crmconnector_log(null, 'deactivate_api_token', 'completed', 'Deactivated API token #' . $tokenId);
+    return 'API token deactivated.';
+}
+
+function crmconnector_cleanup_api_rate_limits()
+{
+    $thresholdKey = date('YmdHi', strtotime('-1 day'));
+    $deleted = Capsule::table(CRMCONNECTOR_API_RATE_LIMITS_TABLE)
+        ->where('window_key', '<', $thresholdKey)
+        ->delete();
+
+    crmconnector_log(null, 'cleanup_api_limits', 'completed', 'Deleted old API rate-limit rows: ' . (int) $deleted);
+    return 'Cleanup completed. Deleted ' . (int) $deleted . ' old API rate-limit rows.';
+}
+
 function crmconnector_get_action_keys()
 {
     return [
@@ -1617,6 +1762,9 @@ function crmconnector_get_action_keys()
         'add_webform',
         'import_leads_csv',
         'save_permission_rule',
+        'rotate_api_token',
+        'deactivate_api_token',
+        'cleanup_api_limits',
     ];
 }
 

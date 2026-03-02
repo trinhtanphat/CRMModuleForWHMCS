@@ -123,6 +123,9 @@ Resources hỗ trợ CRUD:
 - `leads`
 - `deals`
 - `campaigns`
+- `notes`
+- `followups`
+- `labels`
 
 Ví dụ:
 
@@ -136,6 +139,13 @@ Rate limit:
 
 - Cấu hình tại `API Rate Limit/Min`
 - Áp theo token + IP + minute window
+
+Token lifecycle:
+
+- Tạo token mới tại mục `API Management` trong dashboard
+- Token có TTL theo `API Token TTL Days`
+- Có thể deactivate token thủ công
+- Vẫn hỗ trợ fallback `api_token` legacy trong cấu hình
 
 Spec/Collection:
 
