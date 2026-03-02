@@ -23,8 +23,9 @@ const CRMCONNECTOR_WEBFORMS_TABLE = 'mod_crmconnector_webforms';
 const CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE = 'mod_crmconnector_lead_campaigns';
 const CRMCONNECTOR_LEAD_LABELS_TABLE = 'mod_crmconnector_lead_labels';
 const CRMCONNECTOR_PERMISSIONS_TABLE = 'mod_crmconnector_permissions';
+const CRMCONNECTOR_API_RATE_LIMITS_TABLE = 'mod_crmconnector_api_rate_limits';
 const CRMCONNECTOR_MODULE_VERSION = '1.3.0';
-const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.2';
+const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.3';
 
 function crmconnector_config()
 {
@@ -75,6 +76,19 @@ function crmconnector_config()
                 'Type' => 'password',
                 'Size' => '50',
                 'Description' => 'Shared token for public webform endpoint authentication.',
+            ],
+            'api_token' => [
+                'FriendlyName' => 'API Token',
+                'Type' => 'password',
+                'Size' => '80',
+                'Description' => 'Bearer token for CRM API endpoint authentication.',
+            ],
+            'api_rate_limit_per_min' => [
+                'FriendlyName' => 'API Rate Limit/Min',
+                'Type' => 'text',
+                'Size' => '6',
+                'Default' => '60',
+                'Description' => 'Max API requests per minute per token and IP.',
             ],
         ],
     ];
@@ -234,6 +248,17 @@ function crmconnector_activate()
                 $table->integer('adminid')->unsigned();
                 $table->string('action_key', 80);
                 $table->string('is_allowed', 5)->default('yes');
+                $table->timestamp('updated_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_API_RATE_LIMITS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_API_RATE_LIMITS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('token_hash', 64);
+                $table->string('ip_address', 45);
+                $table->string('window_key', 20);
+                $table->integer('request_count')->unsigned()->default(0);
                 $table->timestamp('updated_at')->nullable();
             });
         }

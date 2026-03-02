@@ -107,7 +107,37 @@ Request `POST` mẫu:
 
 Phản hồi JSON `success/message`.
 
-## 7. Cron Behavior
+## 7. REST API (Token + Rate Limit)
+
+Endpoint:
+
+`modules/addons/crmconnector/api.php`
+
+Authentication:
+
+- Header `Authorization: Bearer <api_token>`
+- hoặc header `X-CRM-Token: <api_token>`
+
+Resources hỗ trợ CRUD:
+
+- `leads`
+- `deals`
+- `campaigns`
+
+Ví dụ:
+
+- `GET api.php?resource=leads`
+- `GET api.php?resource=leads&id=1`
+- `POST api.php?resource=leads`
+- `PUT api.php?resource=leads&id=1`
+- `DELETE api.php?resource=leads&id=1`
+
+Rate limit:
+
+- Cấu hình tại `API Rate Limit/Min`
+- Áp theo token + IP + minute window
+
+## 8. Cron Behavior
 
 Trong `DailyCronJob` module sẽ:
 
@@ -115,14 +145,14 @@ Trong `DailyCronJob` module sẽ:
 2. Process follow-ups đến hạn (`pending` -> `done`)
 3. Process automation rules enabled (log execution)
 
-## 8. Security & Compliance
+## 9. Security & Compliance
 
 - CSRF cho admin actions
 - Token cho webform endpoint
 - Audit logs đầy đủ
 - Có policy templates: privacy + DPA
 
-## 9. Suggested Operations Workflow
+## 10. Suggested Operations Workflow
 
 1. Tạo contact types + labels
 2. Cấu hình webform/token
@@ -131,7 +161,7 @@ Trong `DailyCronJob` module sẽ:
 5. Dùng campaign + automation rules
 6. Theo dõi analytics/logs và export audit
 
-## 10. Known MVP Gaps
+## 11. Known MVP Gaps
 
 Bản hiện tại là expanded MVP, chưa phải enterprise CRM hoàn chỉnh như các module thương mại lớn.
 

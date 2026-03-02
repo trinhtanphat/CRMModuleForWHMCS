@@ -224,6 +224,26 @@ Xác nhận module hoạt động ổn định cho:
   - Mapping lead-label được cập nhật.
   - Bảng assignment và board phản ánh label mới.
 
+### TC-24 API auth and CRUD for leads
+
+- Steps:
+  1. Gọi `GET api.php?resource=leads` không token.
+  2. Gọi lại với token đúng.
+  3. Gọi POST tạo lead mới.
+  4. Gọi PUT cập nhật lead.
+  5. Gọi DELETE lead.
+- Expected:
+  - Không token -> 401.
+  - Token đúng -> thao tác CRUD thành công.
+
+### TC-25 API rate limit
+
+- Steps:
+  1. Cấu hình `API Rate Limit/Min` thấp (ví dụ 3).
+  2. Gọi API cùng token/IP vượt ngưỡng.
+- Expected:
+  - Request vượt ngưỡng nhận 429.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:
