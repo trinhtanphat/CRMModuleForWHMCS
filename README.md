@@ -11,6 +11,9 @@ WHMCS addon module to synchronize client data to an external CRM API endpoint.
 - Retry failed/pending records in `DailyCronJob`
 - Local sync status tracking table (`mod_crmconnector_contacts`)
 - Sync audit logs (`mod_crmconnector_logs`)
+- Retry queue UI (retry all / retry selected)
+- CRM notes (basic)
+- CSV export for sync logs
 
 ## Project Structure
 
@@ -76,6 +79,7 @@ Policy templates included:
 Feature benchmark and roadmap:
 
 - `FEATURE_MATRIX.md`
+- `ROADMAP.md`
 
 GitHub publishing guide:
 
