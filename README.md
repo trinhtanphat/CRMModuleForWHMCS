@@ -95,6 +95,7 @@ Release checklist:
 User guide:
 
 - `docs/USER_GUIDE.md`
+- `docs/CRM_FULL_GUIDE.md`
 
 Test scenarios:
 

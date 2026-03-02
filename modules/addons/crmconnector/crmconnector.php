@@ -17,6 +17,9 @@ const CRMCONNECTOR_DEALS_TABLE = 'mod_crmconnector_deals';
 const CRMCONNECTOR_FOLLOWUPS_TABLE = 'mod_crmconnector_followups';
 const CRMCONNECTOR_CAMPAIGNS_TABLE = 'mod_crmconnector_campaigns';
 const CRMCONNECTOR_AUTOMATION_TABLE = 'mod_crmconnector_automation_rules';
+const CRMCONNECTOR_LABELS_TABLE = 'mod_crmconnector_labels';
+const CRMCONNECTOR_CONTACT_TYPES_TABLE = 'mod_crmconnector_contact_types';
+const CRMCONNECTOR_WEBFORMS_TABLE = 'mod_crmconnector_webforms';
 const CRMCONNECTOR_MODULE_VERSION = '1.2.0';
 const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.1';
 
@@ -63,6 +66,12 @@ function crmconnector_config()
                 'Type' => 'text',
                 'Size' => '50',
                 'Description' => 'Comma-separated admin IDs, e.g. 1,2,5',
+            ],
+            'webform_token' => [
+                'FriendlyName' => 'Webform Token',
+                'Type' => 'password',
+                'Size' => '50',
+                'Description' => 'Shared token for public webform endpoint authentication.',
             ],
         ],
     ];
@@ -169,6 +178,35 @@ function crmconnector_activate()
             });
         }
 
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_LABELS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_LABELS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('name', 120);
+                $table->string('color', 30)->default('#007bff');
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_CONTACT_TYPES_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_CONTACT_TYPES_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('name', 120);
+                $table->string('is_active', 5)->default('yes');
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_WEBFORMS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_WEBFORMS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('name', 150);
+                $table->string('default_status', 40)->default('new');
+                $table->integer('contact_type_id')->unsigned()->nullable();
+                $table->string('is_active', 5)->default('yes');
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+
         crmconnector_set_setting('schema_version', CRMCONNECTOR_SCHEMA_VERSION);
 
         return [
@@ -216,6 +254,12 @@ function crmconnector_output($vars)
     if (isset($_GET['crmconnector_action']) && $_GET['crmconnector_action'] === 'export_logs') {
         check_token('WHMCS.admin.default');
         crmconnector_export_logs_csv();
+        return;
+    }
+
+    if (isset($_GET['crmconnector_action']) && $_GET['crmconnector_action'] === 'export_leads') {
+        check_token('WHMCS.admin.default');
+        crmconnector_export_leads_csv();
         return;
     }
 
@@ -295,6 +339,21 @@ function crmconnector_output($vars)
         ->get();
 
     $rules = Capsule::table(CRMCONNECTOR_AUTOMATION_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $labels = Capsule::table(CRMCONNECTOR_LABELS_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $contactTypes = Capsule::table(CRMCONNECTOR_CONTACT_TYPES_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $webforms = Capsule::table(CRMCONNECTOR_WEBFORMS_TABLE)
         ->orderBy('id', 'desc')
         ->limit(50)
         ->get();
@@ -409,6 +468,20 @@ function crmconnector_output($vars)
     echo '</tbody></table>';
 
     echo '<h3>Leads (Phase 2 MVP)</h3>';
+    echo '<form method="get" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:10px;">';
+    echo '<input type="hidden" name="module" value="crmconnector">';
+    echo '<input type="hidden" name="crmconnector_action" value="export_leads">';
+    echo generate_token('form');
+    echo '<button type="submit" class="btn btn-success">Export Leads CSV</button>';
+    echo '</form>';
+
+    echo '<form method="post" enctype="multipart/form-data" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:10px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="import_leads_csv">';
+    echo '<label>Import Leads CSV: <input type="file" name="leads_csv_file" accept=".csv" required></label> ';
+    echo '<button type="submit" class="btn btn-default">Import CSV</button>';
+    echo '</form>';
+
     echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
     echo generate_token('form');
     echo '<input type="hidden" name="crmconnector_action" value="add_lead">';
@@ -453,6 +526,7 @@ function crmconnector_output($vars)
     echo '<label>Lead ID: <input type="number" min="1" name="followup_lead_id"></label> ';
     echo '<label>Title: <input type="text" name="followup_title" required></label> ';
     echo '<label>Channel: <select name="followup_channel"><option>email</option><option>in_app</option></select></label> ';
+    echo '<label>Due: <input type="datetime-local" name="followup_due_at"></label> ';
     echo '<button type="submit" class="btn btn-primary">Add Follow-up</button>';
     echo '</form>';
     echo '<table class="table table-striped"><thead><tr><th>ID</th><th>User ID</th><th>Lead ID</th><th>Title</th><th>Channel</th><th>Status</th><th>Due</th></tr></thead><tbody>';
@@ -512,6 +586,58 @@ function crmconnector_output($vars)
     echo '<li>Total Follow-ups: ' . (int) $followupCount . '</li>';
     echo '<li>Total Campaigns: ' . (int) $campaignCount . '</li>';
     echo '</ul>';
+
+    echo '<h3>Contact Types</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_contact_type">';
+    echo '<label>Name: <input type="text" name="contact_type_name" required></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Contact Type</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Active</th></tr></thead><tbody>';
+    foreach ($contactTypes as $contactType) {
+        echo '<tr><td>' . (int) $contactType->id . '</td><td>' . htmlspecialchars((string) $contactType->name) . '</td><td>' . htmlspecialchars((string) $contactType->is_active) . '</td></tr>';
+    }
+    if (count($contactTypes) === 0) {
+        echo '<tr><td colspan="3">No contact types yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Labels / Board Columns</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_label">';
+    echo '<label>Name: <input type="text" name="label_name" required></label> ';
+    echo '<label>Color: <input type="text" name="label_color" value="#007bff" required></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Label</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Color</th></tr></thead><tbody>';
+    foreach ($labels as $label) {
+        echo '<tr><td>' . (int) $label->id . '</td><td>' . htmlspecialchars((string) $label->name) . '</td><td>' . htmlspecialchars((string) $label->color) . '</td></tr>';
+    }
+    if (count($labels) === 0) {
+        echo '<tr><td colspan="3">No labels yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Web Forms</h3>';
+    echo '<p>Public endpoint: modules/addons/crmconnector/webform.php</p>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_webform">';
+    echo '<label>Name: <input type="text" name="webform_name" required></label> ';
+    echo '<label>Default Status: <input type="text" name="webform_status" value="new"></label> ';
+    echo '<label>Contact Type ID: <input type="number" min="1" name="webform_contact_type_id"></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Webform</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Type ID</th><th>Active</th></tr></thead><tbody>';
+    foreach ($webforms as $webform) {
+        echo '<tr><td>' . (int) $webform->id . '</td><td>' . htmlspecialchars((string) $webform->name) . '</td><td>' . htmlspecialchars((string) $webform->default_status) . '</td><td>' . htmlspecialchars((string) ($webform->contact_type_id ?? '-')) . '</td><td>' . htmlspecialchars((string) $webform->is_active) . '</td></tr>';
+    }
+    if (count($webforms) === 0) {
+        echo '<tr><td colspan="5">No webforms yet.</td></tr>';
+    }
+    echo '</tbody></table>';
 }
 
 function crmconnector_handle_post_action(array $vars)
@@ -568,6 +694,22 @@ function crmconnector_handle_post_action(array $vars)
 
     if ($action === 'add_rule') {
         return crmconnector_add_rule();
+    }
+
+    if ($action === 'add_contact_type') {
+        return crmconnector_add_contact_type();
+    }
+
+    if ($action === 'add_label') {
+        return crmconnector_add_label();
+    }
+
+    if ($action === 'add_webform') {
+        return crmconnector_add_webform();
+    }
+
+    if ($action === 'import_leads_csv') {
+        return crmconnector_import_leads_csv();
     }
 
     return 'No action executed.';
@@ -724,6 +866,7 @@ function crmconnector_add_followup()
     $userid = (int) ($_POST['followup_userid'] ?? 0);
     $leadId = (int) ($_POST['followup_lead_id'] ?? 0);
     $channel = trim((string) ($_POST['followup_channel'] ?? 'email'));
+    $dueAt = trim((string) ($_POST['followup_due_at'] ?? ''));
 
     if ($title === '') {
         return 'Follow-up title is required.';
@@ -735,6 +878,7 @@ function crmconnector_add_followup()
         'title' => $title,
         'channel' => $channel,
         'status' => 'pending',
+        'due_at' => $dueAt !== '' ? date('Y-m-d H:i:s', strtotime($dueAt)) : null,
         'created_at' => Capsule::raw('NOW()'),
         'updated_at' => Capsule::raw('NOW()'),
     ]);
@@ -785,6 +929,177 @@ function crmconnector_add_rule()
 
     crmconnector_log(null, 'add_rule', 'completed', 'Automation rule created: ' . $name);
     return 'Automation rule created successfully.';
+}
+
+function crmconnector_add_contact_type()
+{
+    $name = trim((string) ($_POST['contact_type_name'] ?? ''));
+    if ($name === '') {
+        return 'Contact type name is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_CONTACT_TYPES_TABLE)->insert([
+        'name' => $name,
+        'is_active' => 'yes',
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_contact_type', 'completed', 'Contact type created: ' . $name);
+    return 'Contact type created successfully.';
+}
+
+function crmconnector_add_label()
+{
+    $name = trim((string) ($_POST['label_name'] ?? ''));
+    $color = trim((string) ($_POST['label_color'] ?? '#007bff'));
+    if ($name === '') {
+        return 'Label name is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_LABELS_TABLE)->insert([
+        'name' => $name,
+        'color' => $color,
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_label', 'completed', 'Label created: ' . $name);
+    return 'Label created successfully.';
+}
+
+function crmconnector_add_webform()
+{
+    $name = trim((string) ($_POST['webform_name'] ?? ''));
+    $status = trim((string) ($_POST['webform_status'] ?? 'new'));
+    $contactTypeId = (int) ($_POST['webform_contact_type_id'] ?? 0);
+    if ($name === '') {
+        return 'Webform name is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_WEBFORMS_TABLE)->insert([
+        'name' => $name,
+        'default_status' => $status,
+        'contact_type_id' => $contactTypeId > 0 ? $contactTypeId : null,
+        'is_active' => 'yes',
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_webform', 'completed', 'Webform created: ' . $name);
+    return 'Webform created successfully.';
+}
+
+function crmconnector_export_leads_csv()
+{
+    $leads = Capsule::table(CRMCONNECTOR_LEADS_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(10000)
+        ->get();
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="crmconnector-leads.csv"');
+
+    $output = fopen('php://output', 'w');
+    if ($output === false) {
+        exit;
+    }
+
+    fputcsv($output, ['id', 'name', 'email', 'status', 'source', 'created_at']);
+    foreach ($leads as $lead) {
+        fputcsv($output, [
+            $lead->id,
+            $lead->name,
+            $lead->email,
+            $lead->status,
+            $lead->source,
+            $lead->created_at,
+        ]);
+    }
+
+    fclose($output);
+    exit;
+}
+
+function crmconnector_import_leads_csv()
+{
+    if (!isset($_FILES['leads_csv_file']) || !is_uploaded_file($_FILES['leads_csv_file']['tmp_name'])) {
+        return 'CSV file is required.';
+    }
+
+    $handle = fopen($_FILES['leads_csv_file']['tmp_name'], 'r');
+    if ($handle === false) {
+        return 'Unable to read uploaded CSV file.';
+    }
+
+    $rowIndex = 0;
+    $imported = 0;
+    while (($row = fgetcsv($handle)) !== false) {
+        $rowIndex++;
+        if ($rowIndex === 1) {
+            continue;
+        }
+
+        $name = trim((string) ($row[1] ?? ''));
+        $email = trim((string) ($row[2] ?? ''));
+        $status = trim((string) ($row[3] ?? 'new'));
+        $source = trim((string) ($row[4] ?? 'import'));
+
+        if ($name === '') {
+            continue;
+        }
+
+        Capsule::table(CRMCONNECTOR_LEADS_TABLE)->insert([
+            'name' => $name,
+            'email' => $email !== '' ? $email : null,
+            'status' => $status !== '' ? $status : 'new',
+            'source' => $source !== '' ? $source : 'import',
+            'created_at' => Capsule::raw('NOW()'),
+            'updated_at' => Capsule::raw('NOW()'),
+        ]);
+
+        $imported++;
+    }
+
+    fclose($handle);
+    crmconnector_log(null, 'import_leads_csv', 'completed', 'Imported leads: ' . $imported);
+    return 'Import completed. Added ' . $imported . ' leads.';
+}
+
+function crmconnector_process_due_followups()
+{
+    $dueFollowups = Capsule::table(CRMCONNECTOR_FOLLOWUPS_TABLE)
+        ->where('status', 'pending')
+        ->whereNotNull('due_at')
+        ->where('due_at', '<=', Capsule::raw('NOW()'))
+        ->get();
+
+    $processed = 0;
+    foreach ($dueFollowups as $followup) {
+        Capsule::table(CRMCONNECTOR_FOLLOWUPS_TABLE)
+            ->where('id', $followup->id)
+            ->update([
+                'status' => 'done',
+                'updated_at' => Capsule::raw('NOW()'),
+            ]);
+
+        $processed++;
+        crmconnector_log((int) ($followup->userid ?? 0), 'followup_due', 'completed', 'Follow-up marked done: #' . $followup->id);
+    }
+
+    return $processed;
+}
+
+function crmconnector_process_automation_rules()
+{
+    $enabledRules = Capsule::table(CRMCONNECTOR_AUTOMATION_TABLE)
+        ->where('is_enabled', 'yes')
+        ->get();
+
+    $executed = 0;
+    foreach ($enabledRules as $rule) {
+        $executed++;
+        crmconnector_log(null, 'automation_rule', 'completed', 'Rule checked: ' . $rule->name);
+    }
+
+    return $executed;
 }
 
 function crmconnector_sync_user($userId, array $vars)

@@ -153,6 +153,33 @@ Xác nhận module hoạt động ổn định cho:
   - Schema vẫn hợp lệ.
   - `schema_version` cập nhật.
 
+### TC-16 Lead CSV import/export
+
+- Steps:
+  1. Export leads CSV.
+  2. Chỉnh file và import lại qua form Import Leads CSV.
+- Expected:
+  - Export tải được.
+  - Import tạo thêm leads hợp lệ.
+
+### TC-17 Webform endpoint token
+
+- Steps:
+  1. Gửi POST đến `modules/addons/crmconnector/webform.php` với token sai.
+  2. Gửi lại với token đúng.
+- Expected:
+  - Token sai trả 403.
+  - Token đúng tạo lead thành công.
+
+### TC-18 Daily cron expanded behavior
+
+- Steps:
+  1. Tạo follow-up `pending` có `due_at` trong quá khứ.
+  2. Chạy cron Daily.
+- Expected:
+  - Follow-up đổi thành `done`.
+  - Có log `daily_cron` và `followup_due`.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:

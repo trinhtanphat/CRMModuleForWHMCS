@@ -19,6 +19,9 @@ add_hook('ClientEdit', 1, function ($vars) {
 add_hook('DailyCronJob', 1, function () {
     $settings = crmconnector_get_settings();
     if (($settings['auto_sync'] ?? '') !== 'on') {
+        $processedFollowups = crmconnector_process_due_followups();
+        $executedRules = crmconnector_process_automation_rules();
+        crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules);
         return;
     }
 
@@ -29,6 +32,10 @@ add_hook('DailyCronJob', 1, function () {
     foreach ($failedOrPendingIds as $userId) {
         crmconnector_sync_user((int) $userId, $settings);
     }
+
+    $processedFollowups = crmconnector_process_due_followups();
+    $executedRules = crmconnector_process_automation_rules();
+    crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules);
 });
 
 function crmconnector_handle_auto_sync($userId)

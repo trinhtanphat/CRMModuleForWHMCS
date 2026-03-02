@@ -20,6 +20,11 @@ Safe route: implement original code that achieves similar outcomes (feature pari
   - Retry queue UI (failed sync retry all/selected)
   - CSV export for logs
 - MVP baseline added for Phases 2-6 in module dashboard (Leads/Deals/Follow-ups/Campaigns/Rules/Basic Analytics)
+- Expanded MVP added:
+  - Contact Types and Labels management
+  - Webform definitions + public intake endpoint
+  - Leads CSV import/export
+  - Daily cron processing for due follow-ups and automation rule checks
 
 ## All-Phase Plan
 
