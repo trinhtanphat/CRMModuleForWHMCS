@@ -180,6 +180,33 @@ Xác nhận module hoạt động ổn định cho:
   - Follow-up đổi thành `done`.
   - Có log `daily_cron` và `followup_due`.
 
+### TC-19 Kanban drag-drop deal stage
+
+- Steps:
+  1. Tạo deal ở stage `qualification`.
+  2. Kéo thả card sang cột `proposal`.
+- Expected:
+  - Stage cập nhật thành `proposal`.
+  - Có log `move_deal_stage`.
+
+### TC-20 Lead-Campaign assignment
+
+- Steps:
+  1. Tạo lead và campaign.
+  2. Gán lead vào campaign.
+- Expected:
+  - Bảng assignment hiển thị mapping đúng.
+  - Có log `assign_lead_campaign`.
+
+### TC-21 Action permissions matrix
+
+- Steps:
+  1. Tạo rule `Admin B + add_deal = no`.
+  2. Login Admin B, thử tạo deal.
+- Expected:
+  - Action bị chặn với permission denied.
+  - Admin B vẫn chạy được action khác không bị chặn.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:

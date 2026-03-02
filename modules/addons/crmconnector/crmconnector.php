@@ -20,6 +20,8 @@ const CRMCONNECTOR_AUTOMATION_TABLE = 'mod_crmconnector_automation_rules';
 const CRMCONNECTOR_LABELS_TABLE = 'mod_crmconnector_labels';
 const CRMCONNECTOR_CONTACT_TYPES_TABLE = 'mod_crmconnector_contact_types';
 const CRMCONNECTOR_WEBFORMS_TABLE = 'mod_crmconnector_webforms';
+const CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE = 'mod_crmconnector_lead_campaigns';
+const CRMCONNECTOR_PERMISSIONS_TABLE = 'mod_crmconnector_permissions';
 const CRMCONNECTOR_MODULE_VERSION = '1.2.0';
 const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.1';
 
@@ -207,6 +209,25 @@ function crmconnector_activate()
             });
         }
 
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->integer('lead_id')->unsigned();
+                $table->integer('campaign_id')->unsigned();
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_PERMISSIONS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_PERMISSIONS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->integer('adminid')->unsigned();
+                $table->string('action_key', 80);
+                $table->string('is_allowed', 5)->default('yes');
+                $table->timestamp('updated_at')->nullable();
+            });
+        }
+
         crmconnector_set_setting('schema_version', CRMCONNECTOR_SCHEMA_VERSION);
 
         return [
@@ -357,6 +378,27 @@ function crmconnector_output($vars)
         ->orderBy('id', 'desc')
         ->limit(50)
         ->get();
+
+    $leadCampaignAssignments = Capsule::table(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE)
+        ->leftJoin(CRMCONNECTOR_LEADS_TABLE, CRMCONNECTOR_LEADS_TABLE . '.id', '=', CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.lead_id')
+        ->leftJoin(CRMCONNECTOR_CAMPAIGNS_TABLE, CRMCONNECTOR_CAMPAIGNS_TABLE . '.id', '=', CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.campaign_id')
+        ->select(
+            CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.id',
+            CRMCONNECTOR_LEADS_TABLE . '.name as lead_name',
+            CRMCONNECTOR_CAMPAIGNS_TABLE . '.name as campaign_name',
+            CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.created_at'
+        )
+        ->orderBy(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.id', 'desc')
+        ->limit(100)
+        ->get();
+
+    $admins = Capsule::table('tbladmins')
+        ->select('id', 'username')
+        ->orderBy('id', 'asc')
+        ->get();
+
+    $permissionRules = crmconnector_get_permission_rules();
+    $actionKeys = crmconnector_get_action_keys();
 
     echo '<h2>CRM Connector Dashboard</h2>';
     echo '<p>Manual sync controls and recent synchronization status.</p>';
@@ -518,6 +560,15 @@ function crmconnector_output($vars)
     }
     echo '</tbody></table>';
 
+    echo '<h4>Kanban Board (Drag & Drop)</h4>';
+    echo '<form id="crmconnector-kanban-form" method="post" action="' . htmlspecialchars($moduleLink) . '" style="display:none;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="move_deal_stage">';
+    echo '<input type="hidden" name="move_deal_id" id="crmconnector-move-deal-id" value="">';
+    echo '<input type="hidden" name="move_deal_stage" id="crmconnector-move-deal-stage" value="">';
+    echo '</form>';
+    crmconnector_render_kanban_board($deals);
+
     echo '<h3>Follow-ups (Phase 3 MVP)</h3>';
     echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
     echo generate_token('form');
@@ -553,6 +604,23 @@ function crmconnector_output($vars)
     }
     if (count($campaigns) === 0) {
         echo '<tr><td colspan="4">No campaigns yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h4>Lead-Campaign Assignment</h4>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="assign_lead_campaign">';
+    echo '<label>Lead ID: <input type="number" min="1" name="assignment_lead_id" required></label> ';
+    echo '<label>Campaign ID: <input type="number" min="1" name="assignment_campaign_id" required></label> ';
+    echo '<button type="submit" class="btn btn-primary">Assign</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Lead</th><th>Campaign</th><th>Assigned At</th></tr></thead><tbody>';
+    foreach ($leadCampaignAssignments as $assignment) {
+        echo '<tr><td>' . (int) $assignment->id . '</td><td>' . htmlspecialchars((string) ($assignment->lead_name ?? '-')) . '</td><td>' . htmlspecialchars((string) ($assignment->campaign_name ?? '-')) . '</td><td>' . htmlspecialchars((string) ($assignment->created_at ?? '')) . '</td></tr>';
+    }
+    if (count($leadCampaignAssignments) === 0) {
+        echo '<tr><td colspan="4">No assignments yet.</td></tr>';
     }
     echo '</tbody></table>';
 
@@ -638,6 +706,44 @@ function crmconnector_output($vars)
         echo '<tr><td colspan="5">No webforms yet.</td></tr>';
     }
     echo '</tbody></table>';
+
+    echo '<h3>Permissions Matrix by Action</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="save_permission_rule">';
+    echo '<label>Admin: <select name="permission_adminid">';
+    foreach ($admins as $admin) {
+        echo '<option value="' . (int) $admin->id . '">#' . (int) $admin->id . ' - ' . htmlspecialchars((string) $admin->username) . '</option>';
+    }
+    echo '</select></label> ';
+    echo '<label>Action: <select name="permission_action_key">';
+    foreach ($actionKeys as $actionKey) {
+        echo '<option value="' . htmlspecialchars($actionKey) . '">' . htmlspecialchars($actionKey) . '</option>';
+    }
+    echo '</select></label> ';
+    echo '<label>Allowed: <select name="permission_is_allowed"><option value="yes">yes</option><option value="no">no</option></select></label> ';
+    echo '<button type="submit" class="btn btn-primary">Save Rule</button>';
+    echo '</form>';
+
+    echo '<table class="table table-bordered"><thead><tr><th>Admin</th>';
+    foreach ($actionKeys as $actionKey) {
+        echo '<th>' . htmlspecialchars($actionKey) . '</th>';
+    }
+    echo '</tr></thead><tbody>';
+    foreach ($admins as $admin) {
+        echo '<tr>';
+        echo '<td>#' . (int) $admin->id . ' - ' . htmlspecialchars((string) $admin->username) . '</td>';
+        foreach ($actionKeys as $actionKey) {
+            $key = (int) $admin->id . '|' . $actionKey;
+            $value = $permissionRules[$key] ?? 'default-allow';
+            echo '<td>' . htmlspecialchars($value) . '</td>';
+        }
+        echo '</tr>';
+    }
+    if (count($admins) === 0) {
+        echo '<tr><td colspan="99">No admins found.</td></tr>';
+    }
+    echo '</tbody></table>';
 }
 
 function crmconnector_handle_post_action(array $vars)
@@ -647,6 +753,9 @@ function crmconnector_handle_post_action(array $vars)
     }
 
     $action = (string) ($_POST['crmconnector_action'] ?? '');
+    if (!crmconnector_has_action_access($action)) {
+        return 'Permission denied for action: ' . $action;
+    }
 
     if ($action === 'sync_single') {
         $userId = (int) ($_POST['userid'] ?? 0);
@@ -710,6 +819,18 @@ function crmconnector_handle_post_action(array $vars)
 
     if ($action === 'import_leads_csv') {
         return crmconnector_import_leads_csv();
+    }
+
+    if ($action === 'assign_lead_campaign') {
+        return crmconnector_assign_lead_campaign();
+    }
+
+    if ($action === 'move_deal_stage') {
+        return crmconnector_move_deal_stage();
+    }
+
+    if ($action === 'save_permission_rule') {
+        return crmconnector_save_permission_rule();
     }
 
     return 'No action executed.';
@@ -1100,6 +1221,206 @@ function crmconnector_process_automation_rules()
     }
 
     return $executed;
+}
+
+function crmconnector_assign_lead_campaign()
+{
+    $leadId = (int) ($_POST['assignment_lead_id'] ?? 0);
+    $campaignId = (int) ($_POST['assignment_campaign_id'] ?? 0);
+
+    if ($leadId <= 0 || $campaignId <= 0) {
+        return 'Lead ID and Campaign ID are required.';
+    }
+
+    $leadExists = Capsule::table(CRMCONNECTOR_LEADS_TABLE)->where('id', $leadId)->exists();
+    $campaignExists = Capsule::table(CRMCONNECTOR_CAMPAIGNS_TABLE)->where('id', $campaignId)->exists();
+    if (!$leadExists || !$campaignExists) {
+        return 'Invalid lead or campaign.';
+    }
+
+    Capsule::table(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE)->updateOrInsert(
+        [
+            'lead_id' => $leadId,
+            'campaign_id' => $campaignId,
+        ],
+        [
+            'created_at' => Capsule::raw('NOW()'),
+        ]
+    );
+
+    crmconnector_log(null, 'assign_lead_campaign', 'completed', 'Lead #' . $leadId . ' assigned to campaign #' . $campaignId);
+    return 'Lead assigned to campaign successfully.';
+}
+
+function crmconnector_move_deal_stage()
+{
+    $dealId = (int) ($_POST['move_deal_id'] ?? 0);
+    $targetStage = trim((string) ($_POST['move_deal_stage'] ?? ''));
+    $allowedStages = crmconnector_get_deal_stages();
+
+    if ($dealId <= 0 || !in_array($targetStage, $allowedStages, true)) {
+        return 'Invalid deal move request.';
+    }
+
+    $updated = Capsule::table(CRMCONNECTOR_DEALS_TABLE)
+        ->where('id', $dealId)
+        ->update([
+            'stage' => $targetStage,
+            'updated_at' => Capsule::raw('NOW()'),
+        ]);
+
+    if (!$updated) {
+        return 'Deal not found or unchanged.';
+    }
+
+    crmconnector_log(null, 'move_deal_stage', 'completed', 'Deal #' . $dealId . ' moved to ' . $targetStage);
+    return 'Deal stage updated successfully.';
+}
+
+function crmconnector_get_deal_stages()
+{
+    return ['qualification', 'proposal', 'negotiation', 'won', 'lost'];
+}
+
+function crmconnector_render_kanban_board($deals)
+{
+    $stages = crmconnector_get_deal_stages();
+    $dealsByStage = [];
+    foreach ($stages as $stage) {
+        $dealsByStage[$stage] = [];
+    }
+
+    foreach ($deals as $deal) {
+        $stage = (string) ($deal->stage ?? 'qualification');
+        if (!isset($dealsByStage[$stage])) {
+            $dealsByStage[$stage] = [];
+        }
+        $dealsByStage[$stage][] = $deal;
+    }
+
+    echo '<div style="display:flex; gap:12px; overflow-x:auto; margin-bottom:20px;">';
+    foreach ($stages as $stage) {
+        echo '<div class="panel panel-default crm-kanban-col" data-stage="' . htmlspecialchars($stage) . '" style="min-width:220px; width:220px;">';
+        echo '<div class="panel-heading"><strong>' . htmlspecialchars(strtoupper($stage)) . '</strong></div>';
+        echo '<div class="panel-body" style="min-height:150px;">';
+        foreach ($dealsByStage[$stage] as $deal) {
+            echo '<div class="well well-sm crm-kanban-card" draggable="true" data-deal-id="' . (int) $deal->id . '" style="cursor:move;">';
+            echo '<div><strong>#' . (int) $deal->id . '</strong> ' . htmlspecialchars((string) $deal->title) . '</div>';
+            echo '<div>Amount: ' . htmlspecialchars((string) $deal->amount) . '</div>';
+            echo '<div>Lead: ' . htmlspecialchars((string) ($deal->lead_name ?? '-')) . '</div>';
+            echo '</div>';
+        }
+        if (count($dealsByStage[$stage]) === 0) {
+            echo '<div class="text-muted">Drop deal here</div>';
+        }
+        echo '</div></div>';
+    }
+    echo '</div>';
+
+    echo '<script>';
+    echo 'document.querySelectorAll(".crm-kanban-card").forEach(function(card){';
+    echo 'card.addEventListener("dragstart",function(e){e.dataTransfer.setData("text/plain", card.getAttribute("data-deal-id"));});';
+    echo '});';
+    echo 'document.querySelectorAll(".crm-kanban-col .panel-body").forEach(function(col){';
+    echo 'col.addEventListener("dragover",function(e){e.preventDefault();});';
+    echo 'col.addEventListener("drop",function(e){';
+    echo 'e.preventDefault();';
+    echo 'var dealId=e.dataTransfer.getData("text/plain");';
+    echo 'var stage=col.parentElement.getAttribute("data-stage");';
+    echo 'document.getElementById("crmconnector-move-deal-id").value=dealId;';
+    echo 'document.getElementById("crmconnector-move-deal-stage").value=stage;';
+    echo 'document.getElementById("crmconnector-kanban-form").submit();';
+    echo '});';
+    echo '});';
+    echo '</script>';
+}
+
+function crmconnector_save_permission_rule()
+{
+    $adminId = (int) ($_POST['permission_adminid'] ?? 0);
+    $actionKey = trim((string) ($_POST['permission_action_key'] ?? ''));
+    $isAllowed = trim((string) ($_POST['permission_is_allowed'] ?? 'yes'));
+    $allowedKeys = crmconnector_get_action_keys();
+
+    if ($adminId <= 0 || !in_array($actionKey, $allowedKeys, true)) {
+        return 'Invalid permission rule.';
+    }
+
+    if ($isAllowed !== 'yes' && $isAllowed !== 'no') {
+        return 'Invalid permission value.';
+    }
+
+    Capsule::table(CRMCONNECTOR_PERMISSIONS_TABLE)->updateOrInsert(
+        [
+            'adminid' => $adminId,
+            'action_key' => $actionKey,
+        ],
+        [
+            'is_allowed' => $isAllowed,
+            'updated_at' => Capsule::raw('NOW()'),
+        ]
+    );
+
+    crmconnector_log(null, 'save_permission_rule', 'completed', 'Permission rule updated: admin #' . $adminId . ', ' . $actionKey . '=' . $isAllowed);
+    return 'Permission rule saved.';
+}
+
+function crmconnector_get_action_keys()
+{
+    return [
+        'sync_single',
+        'sync_all',
+        'retry_failed_all',
+        'retry_selected',
+        'add_note',
+        'add_lead',
+        'add_deal',
+        'move_deal_stage',
+        'add_followup',
+        'add_campaign',
+        'assign_lead_campaign',
+        'add_rule',
+        'add_contact_type',
+        'add_label',
+        'add_webform',
+        'import_leads_csv',
+        'save_permission_rule',
+    ];
+}
+
+function crmconnector_get_permission_rules()
+{
+    $rows = Capsule::table(CRMCONNECTOR_PERMISSIONS_TABLE)->get();
+    $rules = [];
+    foreach ($rows as $row) {
+        $rules[(int) $row->adminid . '|' . (string) $row->action_key] = (string) $row->is_allowed;
+    }
+
+    return $rules;
+}
+
+function crmconnector_has_action_access($action)
+{
+    $action = trim((string) $action);
+    if ($action === '') {
+        return false;
+    }
+
+    $adminId = isset($_SESSION['adminid']) ? (int) $_SESSION['adminid'] : 0;
+    if ($adminId <= 0) {
+        return false;
+    }
+
+    $row = Capsule::table(CRMCONNECTOR_PERMISSIONS_TABLE)
+        ->where('adminid', $adminId)
+        ->where('action_key', $action)
+        ->first();
+
+    if (!$row) {
+        return true;
+    }
+
+    return ((string) $row->is_allowed) === 'yes';
 }
 
 function crmconnector_sync_user($userId, array $vars)
