@@ -12,6 +12,11 @@ use WHMCS\Module\Addon\CrmConnector\CrmClient;
 const CRMCONNECTOR_TABLE = 'mod_crmconnector_contacts';
 const CRMCONNECTOR_LOGS_TABLE = 'mod_crmconnector_logs';
 const CRMCONNECTOR_NOTES_TABLE = 'mod_crmconnector_notes';
+const CRMCONNECTOR_LEADS_TABLE = 'mod_crmconnector_leads';
+const CRMCONNECTOR_DEALS_TABLE = 'mod_crmconnector_deals';
+const CRMCONNECTOR_FOLLOWUPS_TABLE = 'mod_crmconnector_followups';
+const CRMCONNECTOR_CAMPAIGNS_TABLE = 'mod_crmconnector_campaigns';
+const CRMCONNECTOR_AUTOMATION_TABLE = 'mod_crmconnector_automation_rules';
 
 function crmconnector_config()
 {
@@ -84,6 +89,70 @@ function crmconnector_activate()
                 $table->text('note');
                 $table->timestamp('created_at')->nullable();
                 $table->timestamp('updated_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_LEADS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_LEADS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->integer('userid')->unsigned()->nullable();
+                $table->string('name', 150);
+                $table->string('email', 190)->nullable();
+                $table->string('status', 40)->default('new');
+                $table->string('source', 80)->nullable();
+                $table->timestamp('created_at')->nullable();
+                $table->timestamp('updated_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_DEALS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_DEALS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->integer('lead_id')->unsigned()->nullable();
+                $table->string('title', 180);
+                $table->decimal('amount', 12, 2)->default(0);
+                $table->string('stage', 40)->default('qualification');
+                $table->timestamp('expected_close_at')->nullable();
+                $table->timestamp('created_at')->nullable();
+                $table->timestamp('updated_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_FOLLOWUPS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_FOLLOWUPS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->integer('lead_id')->unsigned()->nullable();
+                $table->integer('userid')->unsigned()->nullable();
+                $table->string('title', 190);
+                $table->string('channel', 30)->default('email');
+                $table->string('status', 30)->default('pending');
+                $table->timestamp('due_at')->nullable();
+                $table->timestamp('created_at')->nullable();
+                $table->timestamp('updated_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_CAMPAIGNS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_CAMPAIGNS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('name', 150);
+                $table->string('status', 30)->default('active');
+                $table->text('description')->nullable();
+                $table->timestamp('starts_at')->nullable();
+                $table->timestamp('ends_at')->nullable();
+                $table->timestamp('created_at')->nullable();
+                $table->timestamp('updated_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_AUTOMATION_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_AUTOMATION_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('name', 140);
+                $table->string('trigger_event', 80);
+                $table->string('action_type', 80);
+                $table->string('is_enabled', 5)->default('yes');
+                $table->timestamp('created_at')->nullable();
             });
         }
 
@@ -167,6 +236,40 @@ function crmconnector_output($vars)
         )
         ->orderBy(CRMCONNECTOR_NOTES_TABLE . '.id', 'desc')
         ->limit(30)
+        ->get();
+
+    $leads = Capsule::table(CRMCONNECTOR_LEADS_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $deals = Capsule::table(CRMCONNECTOR_DEALS_TABLE)
+        ->leftJoin(CRMCONNECTOR_LEADS_TABLE, CRMCONNECTOR_LEADS_TABLE . '.id', '=', CRMCONNECTOR_DEALS_TABLE . '.lead_id')
+        ->select(
+            CRMCONNECTOR_DEALS_TABLE . '.id',
+            CRMCONNECTOR_DEALS_TABLE . '.title',
+            CRMCONNECTOR_DEALS_TABLE . '.amount',
+            CRMCONNECTOR_DEALS_TABLE . '.stage',
+            CRMCONNECTOR_DEALS_TABLE . '.expected_close_at',
+            CRMCONNECTOR_LEADS_TABLE . '.name as lead_name'
+        )
+        ->orderBy(CRMCONNECTOR_DEALS_TABLE . '.id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $followups = Capsule::table(CRMCONNECTOR_FOLLOWUPS_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $campaigns = Capsule::table(CRMCONNECTOR_CAMPAIGNS_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
+        ->get();
+
+    $rules = Capsule::table(CRMCONNECTOR_AUTOMATION_TABLE)
+        ->orderBy('id', 'desc')
+        ->limit(50)
         ->get();
 
     echo '<h2>CRM Connector Dashboard</h2>';
@@ -273,6 +376,111 @@ function crmconnector_output($vars)
         echo '<tr><td colspan="5">No notes yet.</td></tr>';
     }
     echo '</tbody></table>';
+
+    echo '<h3>Leads (Phase 2 MVP)</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_lead">';
+    echo '<label>Name: <input type="text" name="lead_name" required></label> ';
+    echo '<label>Email: <input type="email" name="lead_email"></label> ';
+    echo '<label>Status: <select name="lead_status"><option>new</option><option>active</option><option>won</option><option>lost</option></select></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Lead</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Status</th></tr></thead><tbody>';
+    foreach ($leads as $lead) {
+        echo '<tr><td>' . (int) $lead->id . '</td><td>' . htmlspecialchars((string) $lead->name) . '</td><td>' . htmlspecialchars((string) ($lead->email ?? '')) . '</td><td>' . htmlspecialchars((string) $lead->status) . '</td></tr>';
+    }
+    if (count($leads) === 0) {
+        echo '<tr><td colspan="4">No leads yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Deals / Pipeline (Phase 2 MVP)</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_deal">';
+    echo '<label>Lead ID: <input type="number" min="1" name="deal_lead_id"></label> ';
+    echo '<label>Title: <input type="text" name="deal_title" required></label> ';
+    echo '<label>Amount: <input type="number" step="0.01" min="0" name="deal_amount" value="0"></label> ';
+    echo '<label>Stage: <select name="deal_stage"><option>qualification</option><option>proposal</option><option>negotiation</option><option>won</option><option>lost</option></select></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Deal</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Lead</th><th>Title</th><th>Amount</th><th>Stage</th><th>Expected Close</th></tr></thead><tbody>';
+    foreach ($deals as $deal) {
+        echo '<tr><td>' . (int) $deal->id . '</td><td>' . htmlspecialchars((string) ($deal->lead_name ?? '-')) . '</td><td>' . htmlspecialchars((string) $deal->title) . '</td><td>' . htmlspecialchars((string) $deal->amount) . '</td><td>' . htmlspecialchars((string) $deal->stage) . '</td><td>' . htmlspecialchars((string) ($deal->expected_close_at ?? '')) . '</td></tr>';
+    }
+    if (count($deals) === 0) {
+        echo '<tr><td colspan="6">No deals yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Follow-ups (Phase 3 MVP)</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_followup">';
+    echo '<label>User ID: <input type="number" min="1" name="followup_userid"></label> ';
+    echo '<label>Lead ID: <input type="number" min="1" name="followup_lead_id"></label> ';
+    echo '<label>Title: <input type="text" name="followup_title" required></label> ';
+    echo '<label>Channel: <select name="followup_channel"><option>email</option><option>in_app</option></select></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Follow-up</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>User ID</th><th>Lead ID</th><th>Title</th><th>Channel</th><th>Status</th><th>Due</th></tr></thead><tbody>';
+    foreach ($followups as $followup) {
+        echo '<tr><td>' . (int) $followup->id . '</td><td>' . htmlspecialchars((string) ($followup->userid ?? '-')) . '</td><td>' . htmlspecialchars((string) ($followup->lead_id ?? '-')) . '</td><td>' . htmlspecialchars((string) $followup->title) . '</td><td>' . htmlspecialchars((string) $followup->channel) . '</td><td>' . htmlspecialchars((string) $followup->status) . '</td><td>' . htmlspecialchars((string) ($followup->due_at ?? '')) . '</td></tr>';
+    }
+    if (count($followups) === 0) {
+        echo '<tr><td colspan="7">No follow-ups yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Campaigns (Phase 4 MVP)</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_campaign">';
+    echo '<label>Name: <input type="text" name="campaign_name" required></label> ';
+    echo '<label>Status: <select name="campaign_status"><option>active</option><option>paused</option><option>closed</option></select></label> ';
+    echo '<label>Description: <input type="text" name="campaign_description" size="60"></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Campaign</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Description</th></tr></thead><tbody>';
+    foreach ($campaigns as $campaign) {
+        echo '<tr><td>' . (int) $campaign->id . '</td><td>' . htmlspecialchars((string) $campaign->name) . '</td><td>' . htmlspecialchars((string) $campaign->status) . '</td><td>' . htmlspecialchars((string) ($campaign->description ?? '')) . '</td></tr>';
+    }
+    if (count($campaigns) === 0) {
+        echo '<tr><td colspan="4">No campaigns yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Automation Rules (Phase 5 MVP)</h3>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:20px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="add_rule">';
+    echo '<label>Name: <input type="text" name="rule_name" required></label> ';
+    echo '<label>Trigger: <select name="rule_trigger"><option>client_created</option><option>invoice_created</option><option>service_suspended</option></select></label> ';
+    echo '<label>Action: <select name="rule_action"><option>create_followup</option><option>add_note</option><option>send_notification</option></select></label> ';
+    echo '<button type="submit" class="btn btn-primary">Add Rule</button>';
+    echo '</form>';
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Name</th><th>Trigger</th><th>Action</th><th>Enabled</th></tr></thead><tbody>';
+    foreach ($rules as $rule) {
+        echo '<tr><td>' . (int) $rule->id . '</td><td>' . htmlspecialchars((string) $rule->name) . '</td><td>' . htmlspecialchars((string) $rule->trigger_event) . '</td><td>' . htmlspecialchars((string) $rule->action_type) . '</td><td>' . htmlspecialchars((string) $rule->is_enabled) . '</td></tr>';
+    }
+    if (count($rules) === 0) {
+        echo '<tr><td colspan="5">No automation rules yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    $leadCount = Capsule::table(CRMCONNECTOR_LEADS_TABLE)->count();
+    $dealCount = Capsule::table(CRMCONNECTOR_DEALS_TABLE)->count();
+    $followupCount = Capsule::table(CRMCONNECTOR_FOLLOWUPS_TABLE)->count();
+    $campaignCount = Capsule::table(CRMCONNECTOR_CAMPAIGNS_TABLE)->count();
+
+    echo '<h3>CRM Analytics (Phase 6 MVP)</h3>';
+    echo '<ul>';
+    echo '<li>Total Leads: ' . (int) $leadCount . '</li>';
+    echo '<li>Total Deals: ' . (int) $dealCount . '</li>';
+    echo '<li>Total Follow-ups: ' . (int) $followupCount . '</li>';
+    echo '<li>Total Campaigns: ' . (int) $campaignCount . '</li>';
+    echo '</ul>';
 }
 
 function crmconnector_handle_post_action(array $vars)
@@ -305,6 +513,26 @@ function crmconnector_handle_post_action(array $vars)
         $userId = (int) ($_POST['note_userid'] ?? 0);
         $note = trim((string) ($_POST['note_content'] ?? ''));
         return crmconnector_add_note($userId, $note);
+    }
+
+    if ($action === 'add_lead') {
+        return crmconnector_add_lead();
+    }
+
+    if ($action === 'add_deal') {
+        return crmconnector_add_deal();
+    }
+
+    if ($action === 'add_followup') {
+        return crmconnector_add_followup();
+    }
+
+    if ($action === 'add_campaign') {
+        return crmconnector_add_campaign();
+    }
+
+    if ($action === 'add_rule') {
+        return crmconnector_add_rule();
     }
 
     return 'No action executed.';
@@ -407,6 +635,121 @@ function crmconnector_export_logs_csv()
 
     fclose($output);
     exit;
+}
+
+function crmconnector_add_lead()
+{
+    $name = trim((string) ($_POST['lead_name'] ?? ''));
+    $email = trim((string) ($_POST['lead_email'] ?? ''));
+    $status = trim((string) ($_POST['lead_status'] ?? 'new'));
+
+    if ($name === '') {
+        return 'Lead name is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_LEADS_TABLE)->insert([
+        'name' => $name,
+        'email' => $email !== '' ? $email : null,
+        'status' => $status,
+        'created_at' => Capsule::raw('NOW()'),
+        'updated_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_lead', 'completed', 'Lead created: ' . $name);
+    return 'Lead created successfully.';
+}
+
+function crmconnector_add_deal()
+{
+    $title = trim((string) ($_POST['deal_title'] ?? ''));
+    $leadId = (int) ($_POST['deal_lead_id'] ?? 0);
+    $amount = (float) ($_POST['deal_amount'] ?? 0);
+    $stage = trim((string) ($_POST['deal_stage'] ?? 'qualification'));
+
+    if ($title === '') {
+        return 'Deal title is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_DEALS_TABLE)->insert([
+        'lead_id' => $leadId > 0 ? $leadId : null,
+        'title' => $title,
+        'amount' => $amount,
+        'stage' => $stage,
+        'created_at' => Capsule::raw('NOW()'),
+        'updated_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_deal', 'completed', 'Deal created: ' . $title);
+    return 'Deal created successfully.';
+}
+
+function crmconnector_add_followup()
+{
+    $title = trim((string) ($_POST['followup_title'] ?? ''));
+    $userid = (int) ($_POST['followup_userid'] ?? 0);
+    $leadId = (int) ($_POST['followup_lead_id'] ?? 0);
+    $channel = trim((string) ($_POST['followup_channel'] ?? 'email'));
+
+    if ($title === '') {
+        return 'Follow-up title is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_FOLLOWUPS_TABLE)->insert([
+        'userid' => $userid > 0 ? $userid : null,
+        'lead_id' => $leadId > 0 ? $leadId : null,
+        'title' => $title,
+        'channel' => $channel,
+        'status' => 'pending',
+        'created_at' => Capsule::raw('NOW()'),
+        'updated_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log($userid > 0 ? $userid : null, 'add_followup', 'completed', 'Follow-up created: ' . $title);
+    return 'Follow-up created successfully.';
+}
+
+function crmconnector_add_campaign()
+{
+    $name = trim((string) ($_POST['campaign_name'] ?? ''));
+    $status = trim((string) ($_POST['campaign_status'] ?? 'active'));
+    $description = trim((string) ($_POST['campaign_description'] ?? ''));
+
+    if ($name === '') {
+        return 'Campaign name is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_CAMPAIGNS_TABLE)->insert([
+        'name' => $name,
+        'status' => $status,
+        'description' => $description !== '' ? $description : null,
+        'created_at' => Capsule::raw('NOW()'),
+        'updated_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_campaign', 'completed', 'Campaign created: ' . $name);
+    return 'Campaign created successfully.';
+}
+
+function crmconnector_add_rule()
+{
+    $name = trim((string) ($_POST['rule_name'] ?? ''));
+    $trigger = trim((string) ($_POST['rule_trigger'] ?? 'client_created'));
+    $action = trim((string) ($_POST['rule_action'] ?? 'create_followup'));
+
+    if ($name === '') {
+        return 'Rule name is required.';
+    }
+
+    Capsule::table(CRMCONNECTOR_AUTOMATION_TABLE)->insert([
+        'name' => $name,
+        'trigger_event' => $trigger,
+        'action_type' => $action,
+        'is_enabled' => 'yes',
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'add_rule', 'completed', 'Automation rule created: ' . $name);
+    return 'Automation rule created successfully.';
 }
 
 function crmconnector_sync_user($userId, array $vars)

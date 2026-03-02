@@ -19,6 +19,7 @@ Safe route: implement original code that achieves similar outcomes (feature pari
   - CRM notes (basic)
   - Retry queue UI (failed sync retry all/selected)
   - CSV export for logs
+- MVP baseline added for Phases 2-6 in module dashboard (Leads/Deals/Follow-ups/Campaigns/Rules/Basic Analytics)
 
 ## All-Phase Plan
 
