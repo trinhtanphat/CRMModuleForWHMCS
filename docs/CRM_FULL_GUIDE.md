@@ -137,6 +137,11 @@ Rate limit:
 - Cấu hình tại `API Rate Limit/Min`
 - Áp theo token + IP + minute window
 
+Spec/Collection:
+
+- OpenAPI: `docs/openapi.crmconnector.json`
+- Postman: `docs/postman.crmconnector.collection.json`
+
 ## 8. Cron Behavior
 
 Trong `DailyCronJob` module sẽ:

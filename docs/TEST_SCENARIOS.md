@@ -244,6 +244,16 @@ Xác nhận module hoạt động ổn định cho:
 - Expected:
   - Request vượt ngưỡng nhận 429.
 
+### TC-26 OpenAPI/Postman interoperability
+
+- Steps:
+  1. Import `docs/openapi.crmconnector.json` vào API client.
+  2. Import `docs/postman.crmconnector.collection.json` vào Postman.
+  3. Chạy request mẫu Leads list/create.
+- Expected:
+  - Collection chạy được với token đúng.
+  - Kết quả API khớp mô tả spec.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:

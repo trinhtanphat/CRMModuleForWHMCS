@@ -1,0 +1,151 @@
+{
+  "info": {
+    "name": "CRM Connector API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for CRM Connector API"
+  },
+  "item": [
+    {
+      "name": "Leads - List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=leads",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "leads"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Leads - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Lead From Postman\",\n  \"email\": \"lead@example.com\",\n  \"status\": \"new\",\n  \"source\": \"postman\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=leads",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "leads"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Deals - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"New Deal\",\n  \"lead_id\": 1,\n  \"amount\": 1000,\n  \"stage\": \"qualification\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=deals",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "deals"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Campaigns - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Launch Campaign\",\n  \"status\": \"active\",\n  \"description\": \"Created from Postman\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=campaigns",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "campaigns"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://your-whmcs.example.com/modules/addons/crmconnector"
+    },
+    {
+      "key": "api_token",
+      "value": "replace-with-configured-api-token"
+    }
+  ]
+}

@@ -101,6 +101,11 @@ API endpoint:
 
 - `modules/addons/crmconnector/api.php`
 
+API specs and tools:
+
+- `docs/openapi.crmconnector.json`
+- `docs/postman.crmconnector.collection.json`
+
 Test scenarios:
 
 - `docs/TEST_SCENARIOS.md`
