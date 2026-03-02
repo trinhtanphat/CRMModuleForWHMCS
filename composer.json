@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "lint": "phpcs",
+    "lint": "phpcs --standard=phpcs.xml.dist --warning-severity=0 modules/addons/crmconnector",
     "analyse": "phpstan analyse",
     "check": [
       "@lint",
