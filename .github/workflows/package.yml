@@ -1,0 +1,29 @@
+name: Package
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create package structure
+        run: |
+          mkdir -p dist/modules/addons
+          cp -R modules/addons/crmconnector dist/modules/addons/crmconnector
+
+      - name: Zip artifact
+        run: |
+          cd dist
+          zip -r crmconnector-whmcs.zip modules
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crmconnector-whmcs
+          path: dist/crmconnector-whmcs.zip

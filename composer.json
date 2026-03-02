@@ -1,0 +1,26 @@
+{
+  "name": "mr-robert/whmcs-crm-connector",
+  "description": "WHMCS addon module to sync customers to CRM",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": ">=8.1"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^1.12",
+    "squizlabs/php_codesniffer": "^3.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "WHMCS\\Module\\Addon\\CrmConnector\\": "modules/addons/crmconnector/lib/"
+    }
+  },
+  "scripts": {
+    "lint": "phpcs",
+    "analyse": "phpstan analyse",
+    "check": [
+      "@lint",
+      "@analyse"
+    ]
+  }
+}

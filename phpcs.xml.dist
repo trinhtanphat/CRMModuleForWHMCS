@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<ruleset name="WHMCS CRM Connector Standard">
+    <description>Code style rules for WHMCS CRM Connector.</description>
+
+    <file>modules/addons/crmconnector</file>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+
+    <rule ref="PSR12" />
+</ruleset>
