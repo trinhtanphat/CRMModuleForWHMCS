@@ -92,6 +92,14 @@ Release checklist:
 
 - `docs/RELEASE_CHECKLIST.md`
 
+User guide:
+
+- `docs/USER_GUIDE.md`
+
+Test scenarios:
+
+- `docs/TEST_SCENARIOS.md`
+
 ## Permission Model
 
 Addon access is still controlled by WHMCS admin role permissions. Additionally, this module can enforce write-action restrictions:
