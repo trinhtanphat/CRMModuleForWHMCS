@@ -14,6 +14,9 @@ WHMCS addon module to synchronize client data to an external CRM API endpoint.
 - Retry queue UI (retry all / retry selected)
 - CRM notes (basic)
 - CSV export for sync logs
+- Module/schema version tracking
+- Upgrade handler (`crmconnector_upgrade`) for migration compatibility
+- Optional write-access restriction by admin ID list
 
 ## Project Structure
 
@@ -84,6 +87,25 @@ Feature benchmark and roadmap:
 GitHub publishing guide:
 
 - `docs/PUBLISH_GITHUB.md`
+
+Release checklist:
+
+- `docs/RELEASE_CHECKLIST.md`
+
+## Permission Model
+
+Addon access is still controlled by WHMCS admin role permissions. Additionally, this module can enforce write-action restrictions:
+
+- `Restrict Write Access` = enabled
+- `Write Admin IDs` = comma-separated whitelist of admin IDs
+
+Admins outside this list can still view module data in read-only mode.
+
+## Migration / Versioning
+
+- Module version is declared in addon config.
+- Schema version is stored in `tbladdonmodules` with key `schema_version`.
+- `crmconnector_upgrade()` executes schema reconciliation for upgrades.
 
 ## Can WHMCS Block This?
 

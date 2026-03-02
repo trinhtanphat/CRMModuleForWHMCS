@@ -17,13 +17,15 @@ const CRMCONNECTOR_DEALS_TABLE = 'mod_crmconnector_deals';
 const CRMCONNECTOR_FOLLOWUPS_TABLE = 'mod_crmconnector_followups';
 const CRMCONNECTOR_CAMPAIGNS_TABLE = 'mod_crmconnector_campaigns';
 const CRMCONNECTOR_AUTOMATION_TABLE = 'mod_crmconnector_automation_rules';
+const CRMCONNECTOR_MODULE_VERSION = '1.2.0';
+const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.1';
 
 function crmconnector_config()
 {
     return [
         'name' => 'CRM Connector',
         'description' => 'Sync WHMCS clients to an external CRM endpoint.',
-        'version' => '1.1.0',
+        'version' => CRMCONNECTOR_MODULE_VERSION,
         'author' => 'CRMModuleForWHMCS',
         'language' => 'english',
         'fields' => [
@@ -50,6 +52,17 @@ function crmconnector_config()
                 'FriendlyName' => 'Auto Sync via Hook',
                 'Type' => 'yesno',
                 'Description' => 'Enable client sync on create/edit hooks.',
+            ],
+            'restrict_write_admins' => [
+                'FriendlyName' => 'Restrict Write Access',
+                'Type' => 'yesno',
+                'Description' => 'If enabled, only admins listed below can run write actions.',
+            ],
+            'write_admin_ids' => [
+                'FriendlyName' => 'Write Admin IDs',
+                'Type' => 'text',
+                'Size' => '50',
+                'Description' => 'Comma-separated admin IDs, e.g. 1,2,5',
             ],
         ],
     ];
@@ -156,6 +169,8 @@ function crmconnector_activate()
             });
         }
 
+        crmconnector_set_setting('schema_version', CRMCONNECTOR_SCHEMA_VERSION);
+
         return [
             'status' => 'success',
             'description' => 'CRM Connector activated successfully.',
@@ -176,10 +191,22 @@ function crmconnector_deactivate()
     ];
 }
 
+function crmconnector_upgrade($vars)
+{
+    $result = crmconnector_activate();
+    if (($result['status'] ?? '') === 'success') {
+        crmconnector_set_setting('schema_version', CRMCONNECTOR_SCHEMA_VERSION);
+    }
+
+    return $result;
+}
+
 function crmconnector_output($vars)
 {
     $moduleLink = $vars['modulelink'];
     $message = '';
+    $schemaVersion = crmconnector_get_setting('schema_version', 'unknown');
+    $canWrite = crmconnector_has_write_access($vars);
 
     if (isset($_POST['crmconnector_action'])) {
         check_token('WHMCS.admin.default');
@@ -274,6 +301,10 @@ function crmconnector_output($vars)
 
     echo '<h2>CRM Connector Dashboard</h2>';
     echo '<p>Manual sync controls and recent synchronization status.</p>';
+    echo '<p><strong>Module:</strong> ' . htmlspecialchars(CRMCONNECTOR_MODULE_VERSION) . ' | <strong>Schema:</strong> ' . htmlspecialchars($schemaVersion) . '</p>';
+    if (!$canWrite) {
+        echo '<div class="alert alert-warning">Read-only mode: your admin account is not allowed to run write actions in this module.</div>';
+    }
 
     echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:16px;">';
     echo generate_token('form');
@@ -485,6 +516,10 @@ function crmconnector_output($vars)
 
 function crmconnector_handle_post_action(array $vars)
 {
+    if (!crmconnector_has_write_access($vars)) {
+        return 'Permission denied. Your admin account has read-only access for this module.';
+    }
+
     $action = (string) ($_POST['crmconnector_action'] ?? '');
 
     if ($action === 'sync_single') {
@@ -821,4 +856,60 @@ function crmconnector_log($userId, $action, $status, $message)
         'message' => (string) $message,
         'created_at' => Capsule::raw('NOW()'),
     ]);
+}
+
+function crmconnector_get_setting($settingName, $defaultValue = '')
+{
+    $row = Capsule::table('tbladdonmodules')
+        ->where('module', 'crmconnector')
+        ->where('setting', $settingName)
+        ->first();
+
+    if (!$row) {
+        return $defaultValue;
+    }
+
+    return (string) $row->value;
+}
+
+function crmconnector_set_setting($settingName, $settingValue)
+{
+    Capsule::table('tbladdonmodules')->updateOrInsert(
+        [
+            'module' => 'crmconnector',
+            'setting' => (string) $settingName,
+        ],
+        [
+            'value' => (string) $settingValue,
+        ]
+    );
+}
+
+function crmconnector_has_write_access(array $vars)
+{
+    if (($vars['restrict_write_admins'] ?? '') !== 'on') {
+        return true;
+    }
+
+    $adminId = isset($_SESSION['adminid']) ? (int) $_SESSION['adminid'] : 0;
+    if ($adminId <= 0) {
+        return false;
+    }
+
+    $rawList = (string) ($vars['write_admin_ids'] ?? '');
+    $listParts = array_filter(array_map('trim', explode(',', $rawList)), function ($value) {
+        return $value !== '';
+    });
+
+    if (count($listParts) === 0) {
+        return false;
+    }
+
+    foreach ($listParts as $part) {
+        if ((int) $part === $adminId) {
+            return true;
+        }
+    }
+
+    return false;
 }

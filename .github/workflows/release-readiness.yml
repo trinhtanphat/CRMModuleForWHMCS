@@ -1,0 +1,40 @@
+name: Release Readiness
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required files
+        run: |
+          test -f README.md
+          test -f CHANGELOG.md
+          test -f docs/PRIVACY_POLICY.md
+          test -f docs/DATA_PROCESSING_ADDENDUM.md
+          test -f docs/RELEASE_CHECKLIST.md
+          test -f modules/addons/crmconnector/crmconnector.php
+
+      - name: Build package structure
+        run: |
+          mkdir -p dist/modules/addons
+          cp -R modules/addons/crmconnector dist/modules/addons/crmconnector
+          test -f dist/modules/addons/crmconnector/crmconnector.php
+
+      - name: Create archive
+        run: |
+          cd dist
+          zip -r crmconnector-whmcs-ci.zip modules
+          test -f crmconnector-whmcs-ci.zip
+
+      - name: Upload readiness artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crmconnector-readiness-package
+          path: dist/crmconnector-whmcs-ci.zip
