@@ -30,6 +30,9 @@ Safe route: implement original code that achieves similar outcomes (feature pari
   - API CRUD expanded to notes/followups/labels
   - API token rotation with expiry and deactivation
   - API usage dashboard metrics and rate-limit cleanup
+  - Outbound webhooks with HMAC signatures
+  - API mutation audit trail with before/after snapshots
+  - API pagination/filter/sort controls
 
 ## All-Phase Plan
 

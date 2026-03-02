@@ -284,6 +284,35 @@ Xác nhận module hoạt động ổn định cho:
   - Bản ghi rate-limit cũ được dọn.
   - Có log `cleanup_api_limits`.
 
+### TC-30 API pagination/filter/sort
+
+- Steps:
+  1. Tạo nhiều records leads/deals.
+  2. Gọi API với `page`, `per_page`, `sort_by`, `sort_dir`, `q`, `status/stage`.
+- Expected:
+  - Kết quả có `pagination` metadata đúng.
+  - Filter/sort áp dụng chính xác.
+
+### TC-31 Webhook outbound signature
+
+- Steps:
+  1. Cấu hình webhook URL + secret + events.
+  2. Tạo/update/delete resource qua API.
+  3. Kiểm tra endpoint nhận webhook.
+- Expected:
+  - Nhận payload đúng event.
+  - Header `X-CRM-Signature` xác thực được.
+
+### TC-32 Audit trail before/after snapshots
+
+- Steps:
+  1. Tạo resource qua API.
+  2. Cập nhật resource qua API.
+  3. Xoá resource qua API.
+- Expected:
+  - Audit table có record create/update/delete.
+  - `before_snapshot` và `after_snapshot` đúng ngữ cảnh.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:

@@ -25,8 +25,10 @@ const CRMCONNECTOR_LEAD_LABELS_TABLE = 'mod_crmconnector_lead_labels';
 const CRMCONNECTOR_PERMISSIONS_TABLE = 'mod_crmconnector_permissions';
 const CRMCONNECTOR_API_RATE_LIMITS_TABLE = 'mod_crmconnector_api_rate_limits';
 const CRMCONNECTOR_API_TOKENS_TABLE = 'mod_crmconnector_api_tokens';
-const CRMCONNECTOR_MODULE_VERSION = '1.4.0';
-const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.4';
+const CRMCONNECTOR_WEBHOOK_DELIVERIES_TABLE = 'mod_crmconnector_webhook_deliveries';
+const CRMCONNECTOR_AUDIT_TRAIL_TABLE = 'mod_crmconnector_audit_trail';
+const CRMCONNECTOR_MODULE_VERSION = '1.5.0';
+const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.5';
 
 function crmconnector_config()
 {
@@ -97,6 +99,32 @@ function crmconnector_config()
                 'Size' => '6',
                 'Default' => '90',
                 'Description' => 'Expiry in days for rotated API tokens.',
+            ],
+            'webhook_url' => [
+                'FriendlyName' => 'Webhook URL',
+                'Type' => 'text',
+                'Size' => '80',
+                'Description' => 'Optional outbound webhook endpoint for CRM events.',
+            ],
+            'webhook_secret' => [
+                'FriendlyName' => 'Webhook Secret',
+                'Type' => 'password',
+                'Size' => '80',
+                'Description' => 'HMAC secret used to sign webhook payloads.',
+            ],
+            'webhook_events' => [
+                'FriendlyName' => 'Webhook Events',
+                'Type' => 'text',
+                'Size' => '80',
+                'Default' => 'api_created,api_updated,api_deleted',
+                'Description' => 'Comma-separated event names to send.',
+            ],
+            'api_default_per_page' => [
+                'FriendlyName' => 'API Default Per Page',
+                'Type' => 'text',
+                'Size' => '6',
+                'Default' => '25',
+                'Description' => 'Default pagination size for API list endpoints.',
             ],
         ],
     ];
@@ -281,6 +309,31 @@ function crmconnector_activate()
                 $table->timestamp('created_at')->nullable();
                 $table->timestamp('expires_at')->nullable();
                 $table->timestamp('last_used_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_WEBHOOK_DELIVERIES_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_WEBHOOK_DELIVERIES_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('event_name', 80);
+                $table->string('status', 30);
+                $table->integer('http_code')->unsigned()->nullable();
+                $table->text('response_body')->nullable();
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_AUDIT_TRAIL_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_AUDIT_TRAIL_TABLE, function ($table) {
+                $table->increments('id');
+                $table->string('actor_type', 30);
+                $table->integer('actor_id')->unsigned()->nullable();
+                $table->string('resource', 40);
+                $table->integer('resource_id')->unsigned()->nullable();
+                $table->string('action', 30);
+                $table->longText('before_snapshot')->nullable();
+                $table->longText('after_snapshot')->nullable();
+                $table->timestamp('created_at')->nullable();
             });
         }
 
@@ -1738,6 +1791,97 @@ function crmconnector_cleanup_api_rate_limits()
 
     crmconnector_log(null, 'cleanup_api_limits', 'completed', 'Deleted old API rate-limit rows: ' . (int) $deleted);
     return 'Cleanup completed. Deleted ' . (int) $deleted . ' old API rate-limit rows.';
+}
+
+function crmconnector_cleanup_old_observability_data()
+{
+    $deletedWebhooks = Capsule::table(CRMCONNECTOR_WEBHOOK_DELIVERIES_TABLE)
+        ->where('created_at', '<', date('Y-m-d H:i:s', strtotime('-30 days')))
+        ->delete();
+
+    $deletedAudit = Capsule::table(CRMCONNECTOR_AUDIT_TRAIL_TABLE)
+        ->where('created_at', '<', date('Y-m-d H:i:s', strtotime('-90 days')))
+        ->delete();
+
+    return [
+        'webhooks' => (int) $deletedWebhooks,
+        'audit' => (int) $deletedAudit,
+    ];
+}
+
+function crmconnector_is_webhook_event_enabled($eventName)
+{
+    $eventsRaw = trim((string) crmconnector_get_setting('webhook_events', ''));
+    if ($eventsRaw === '') {
+        return false;
+    }
+
+    $events = array_map('trim', explode(',', strtolower($eventsRaw)));
+    return in_array(strtolower((string) $eventName), $events, true);
+}
+
+function crmconnector_dispatch_webhook($eventName, array $payload)
+{
+    $url = trim((string) crmconnector_get_setting('webhook_url', ''));
+    if ($url === '' || !crmconnector_is_webhook_event_enabled($eventName)) {
+        return;
+    }
+
+    $secret = (string) crmconnector_get_setting('webhook_secret', '');
+    $bodyArray = [
+        'event' => $eventName,
+        'timestamp' => gmdate('c'),
+        'payload' => $payload,
+    ];
+    $body = json_encode($bodyArray);
+    if ($body === false) {
+        return;
+    }
+
+    $signature = hash_hmac('sha256', $body, $secret);
+    $curl = curl_init($url);
+    curl_setopt_array($curl, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'X-CRM-Event: ' . $eventName,
+            'X-CRM-Signature: sha256=' . $signature,
+        ],
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 12,
+    ]);
+
+    $responseBody = curl_exec($curl);
+    $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $error = curl_error($curl);
+    curl_close($curl);
+
+    Capsule::table(CRMCONNECTOR_WEBHOOK_DELIVERIES_TABLE)->insert([
+        'event_name' => (string) $eventName,
+        'status' => $error !== '' ? 'failed' : (($httpCode >= 200 && $httpCode < 300) ? 'sent' : 'non_2xx'),
+        'http_code' => $httpCode > 0 ? $httpCode : null,
+        'response_body' => $error !== '' ? $error : ((string) $responseBody),
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
+}
+
+function crmconnector_audit_write($actorType, $actorId, $resource, $resourceId, $action, $before, $after)
+{
+    $beforeJson = $before !== null ? json_encode($before) : null;
+    $afterJson = $after !== null ? json_encode($after) : null;
+
+    Capsule::table(CRMCONNECTOR_AUDIT_TRAIL_TABLE)->insert([
+        'actor_type' => (string) $actorType,
+        'actor_id' => $actorId,
+        'resource' => (string) $resource,
+        'resource_id' => $resourceId,
+        'action' => (string) $action,
+        'before_snapshot' => $beforeJson,
+        'after_snapshot' => $afterJson,
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
 }
 
 function crmconnector_get_action_keys()

@@ -50,7 +50,7 @@ function crmconnector_api_handle_request()
     }
 
     if ($method === 'POST') {
-        $created = crmconnector_api_create_resource($resource, $payload);
+        $created = crmconnector_api_create_resource($resource, $payload, $tokenMeta);
         crmconnector_log(null, 'api_post_' . $resource, 'completed', 'API POST ' . $resource);
         crmconnector_api_response(201, ['success' => true, 'data' => $created]);
     }
@@ -60,7 +60,7 @@ function crmconnector_api_handle_request()
             crmconnector_api_response(400, ['success' => false, 'message' => 'ID is required for update']);
         }
 
-        $updated = crmconnector_api_update_resource($resource, $id, $payload);
+        $updated = crmconnector_api_update_resource($resource, $id, $payload, $tokenMeta);
         crmconnector_log(null, 'api_put_' . $resource, 'completed', 'API PUT ' . $resource . ' #' . $id);
         crmconnector_api_response(200, ['success' => true, 'data' => $updated]);
     }
@@ -70,7 +70,7 @@ function crmconnector_api_handle_request()
             crmconnector_api_response(400, ['success' => false, 'message' => 'ID is required for delete']);
         }
 
-        $deleted = crmconnector_api_delete_resource($resource, $id);
+        $deleted = crmconnector_api_delete_resource($resource, $id, $tokenMeta);
         crmconnector_log(null, 'api_delete_' . $resource, 'completed', 'API DELETE ' . $resource . ' #' . $id);
         crmconnector_api_response(200, ['success' => true, 'deleted' => $deleted]);
     }
@@ -106,7 +106,7 @@ function crmconnector_api_table_for_resource($resource)
 function crmconnector_api_get_resource($resource, $id)
 {
     $table = crmconnector_api_table_for_resource($resource);
-    $query = Capsule::table($table)->orderBy('id', 'desc');
+    $query = Capsule::table($table);
 
     if ($id > 0) {
         $row = $query->where('id', $id)->first();
@@ -117,24 +117,80 @@ function crmconnector_api_get_resource($resource, $id)
         return $row;
     }
 
-    return $query->limit(200)->get();
+    $allowedSort = crmconnector_api_allowed_sort_columns($resource);
+    $sortBy = trim((string) ($_GET['sort_by'] ?? 'id'));
+    if (!in_array($sortBy, $allowedSort, true)) {
+        $sortBy = 'id';
+    }
+
+    $sortDir = strtolower(trim((string) ($_GET['sort_dir'] ?? 'desc')));
+    if ($sortDir !== 'asc' && $sortDir !== 'desc') {
+        $sortDir = 'desc';
+    }
+
+    $query = crmconnector_api_apply_filters($query, $resource);
+    $query->orderBy($sortBy, $sortDir);
+
+    $defaultPerPage = (int) crmconnector_get_setting('api_default_per_page', '25');
+    if ($defaultPerPage <= 0) {
+        $defaultPerPage = 25;
+    }
+
+    $perPage = (int) ($_GET['per_page'] ?? $defaultPerPage);
+    if ($perPage <= 0) {
+        $perPage = $defaultPerPage;
+    }
+    if ($perPage > 200) {
+        $perPage = 200;
+    }
+
+    $page = (int) ($_GET['page'] ?? 1);
+    if ($page <= 0) {
+        $page = 1;
+    }
+
+    $total = (int) (clone $query)->count();
+    $items = $query->offset(($page - 1) * $perPage)->limit($perPage)->get();
+
+    return [
+        'items' => $items,
+        'pagination' => [
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'total_pages' => (int) ceil($total / $perPage),
+        ],
+        'sort' => [
+            'by' => $sortBy,
+            'dir' => $sortDir,
+        ],
+    ];
 }
 
-function crmconnector_api_create_resource($resource, array $payload)
+function crmconnector_api_create_resource($resource, array $payload, $tokenMeta)
 {
     $table = crmconnector_api_table_for_resource($resource);
     $record = crmconnector_api_normalize_payload($resource, $payload, false);
     Capsule::table($table)->insert($record);
 
     $id = (int) Capsule::table($table)->orderBy('id', 'desc')->value('id');
-    return Capsule::table($table)->where('id', $id)->first();
+    $created = Capsule::table($table)->where('id', $id)->first();
+
+    crmconnector_audit_write('api', (int) ($tokenMeta->id ?? 0), $resource, $id, 'create', null, $created);
+    crmconnector_dispatch_webhook('api_created', [
+        'resource' => $resource,
+        'resource_id' => $id,
+        'actor_token_id' => (int) ($tokenMeta->id ?? 0),
+    ]);
+
+    return $created;
 }
 
-function crmconnector_api_update_resource($resource, $id, array $payload)
+function crmconnector_api_update_resource($resource, $id, array $payload, $tokenMeta)
 {
     $table = crmconnector_api_table_for_resource($resource);
-    $exists = Capsule::table($table)->where('id', (int) $id)->exists();
-    if (!$exists) {
+    $before = Capsule::table($table)->where('id', (int) $id)->first();
+    if (!$before) {
         crmconnector_api_response(404, ['success' => false, 'message' => 'Resource not found']);
     }
 
@@ -144,13 +200,37 @@ function crmconnector_api_update_resource($resource, $id, array $payload)
     }
 
     Capsule::table($table)->where('id', (int) $id)->update($record);
-    return Capsule::table($table)->where('id', (int) $id)->first();
+    $after = Capsule::table($table)->where('id', (int) $id)->first();
+
+    crmconnector_audit_write('api', (int) ($tokenMeta->id ?? 0), $resource, (int) $id, 'update', $before, $after);
+    crmconnector_dispatch_webhook('api_updated', [
+        'resource' => $resource,
+        'resource_id' => (int) $id,
+        'actor_token_id' => (int) ($tokenMeta->id ?? 0),
+    ]);
+
+    return $after;
 }
 
-function crmconnector_api_delete_resource($resource, $id)
+function crmconnector_api_delete_resource($resource, $id, $tokenMeta)
 {
     $table = crmconnector_api_table_for_resource($resource);
-    return (bool) Capsule::table($table)->where('id', (int) $id)->delete();
+    $before = Capsule::table($table)->where('id', (int) $id)->first();
+    if (!$before) {
+        crmconnector_api_response(404, ['success' => false, 'message' => 'Resource not found']);
+    }
+
+    $deleted = (bool) Capsule::table($table)->where('id', (int) $id)->delete();
+    if ($deleted) {
+        crmconnector_audit_write('api', (int) ($tokenMeta->id ?? 0), $resource, (int) $id, 'delete', $before, null);
+        crmconnector_dispatch_webhook('api_deleted', [
+            'resource' => $resource,
+            'resource_id' => (int) $id,
+            'actor_token_id' => (int) ($tokenMeta->id ?? 0),
+        ]);
+    }
+
+    return $deleted;
 }
 
 function crmconnector_api_normalize_payload($resource, array $payload, $isUpdate)
@@ -439,6 +519,102 @@ function crmconnector_api_payload()
     }
 
     return is_array($payload) ? $payload : [];
+}
+
+function crmconnector_api_allowed_sort_columns($resource)
+{
+    $common = ['id', 'created_at', 'updated_at'];
+
+    if ($resource === 'leads') {
+        return array_merge($common, ['name', 'email', 'status', 'source']);
+    }
+
+    if ($resource === 'deals') {
+        return array_merge($common, ['title', 'amount', 'stage', 'lead_id', 'expected_close_at']);
+    }
+
+    if ($resource === 'campaigns') {
+        return array_merge($common, ['name', 'status', 'starts_at', 'ends_at']);
+    }
+
+    if ($resource === 'notes') {
+        return ['id', 'userid', 'adminid', 'created_at', 'updated_at'];
+    }
+
+    if ($resource === 'followups') {
+        return array_merge($common, ['title', 'status', 'channel', 'due_at', 'userid', 'lead_id']);
+    }
+
+    return ['id', 'name', 'color', 'created_at'];
+}
+
+function crmconnector_api_apply_filters($query, $resource)
+{
+    $q = trim((string) ($_GET['q'] ?? ''));
+
+    if ($resource === 'leads') {
+        if (isset($_GET['status']) && trim((string) $_GET['status']) !== '') {
+            $query->where('status', trim((string) $_GET['status']));
+        }
+        if (isset($_GET['source']) && trim((string) $_GET['source']) !== '') {
+            $query->where('source', trim((string) $_GET['source']));
+        }
+        if ($q !== '') {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('name', 'like', '%' . $q . '%')->orWhere('email', 'like', '%' . $q . '%');
+            });
+        }
+    }
+
+    if ($resource === 'deals') {
+        if (isset($_GET['stage']) && trim((string) $_GET['stage']) !== '') {
+            $query->where('stage', trim((string) $_GET['stage']));
+        }
+        if (isset($_GET['lead_id']) && (int) $_GET['lead_id'] > 0) {
+            $query->where('lead_id', (int) $_GET['lead_id']);
+        }
+        if ($q !== '') {
+            $query->where('title', 'like', '%' . $q . '%');
+        }
+    }
+
+    if ($resource === 'campaigns') {
+        if (isset($_GET['status']) && trim((string) $_GET['status']) !== '') {
+            $query->where('status', trim((string) $_GET['status']));
+        }
+        if ($q !== '') {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('name', 'like', '%' . $q . '%')->orWhere('description', 'like', '%' . $q . '%');
+            });
+        }
+    }
+
+    if ($resource === 'notes') {
+        if (isset($_GET['userid']) && (int) $_GET['userid'] > 0) {
+            $query->where('userid', (int) $_GET['userid']);
+        }
+        if ($q !== '') {
+            $query->where('note', 'like', '%' . $q . '%');
+        }
+    }
+
+    if ($resource === 'followups') {
+        if (isset($_GET['status']) && trim((string) $_GET['status']) !== '') {
+            $query->where('status', trim((string) $_GET['status']));
+        }
+        if (isset($_GET['userid']) && (int) $_GET['userid'] > 0) {
+            $query->where('userid', (int) $_GET['userid']);
+        }
+        if ($q !== '') {
+            $query->where('title', 'like', '%' . $q . '%');
+        }
+    }
+
+    if ($resource === 'labels' && $q !== '') {
+        $query->where('name', 'like', '%' . $q . '%');
+    }
+
+    return $query;
 }
 
 function crmconnector_api_rate_limit_allow($token, $limitPerMin)

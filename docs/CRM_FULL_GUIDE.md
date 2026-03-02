@@ -147,6 +147,22 @@ Token lifecycle:
 - Có thể deactivate token thủ công
 - Vẫn hỗ trợ fallback `api_token` legacy trong cấu hình
 
+List controls:
+
+- Pagination: `page`, `per_page`
+- Sorting: `sort_by`, `sort_dir`
+- Filtering/search: `status`, `stage`, `source`, `userid`, `q`
+
+Webhook outbound:
+
+- Cấu hình: `Webhook URL`, `Webhook Secret`, `Webhook Events`
+- Event mặc định: `api_created`, `api_updated`, `api_deleted`
+- Header chữ ký: `X-CRM-Signature: sha256=<hmac>`
+
+Audit trail:
+
+- Mỗi mutation qua API lưu snapshot trước/sau vào audit table.
+
 Spec/Collection:
 
 - OpenAPI: `docs/openapi.crmconnector.json`

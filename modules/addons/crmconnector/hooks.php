@@ -22,7 +22,8 @@ add_hook('DailyCronJob', 1, function () {
         $processedFollowups = crmconnector_process_due_followups();
         $executedRules = crmconnector_process_automation_rules();
         $cleanedLimits = crmconnector_cleanup_api_rate_limits();
-        crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules . ', API Cleanup: ' . $cleanedLimits);
+        $cleanedObs = crmconnector_cleanup_old_observability_data();
+        crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules . ', API Cleanup: ' . $cleanedLimits . ', Webhooks Cleanup: ' . (int) $cleanedObs['webhooks'] . ', Audit Cleanup: ' . (int) $cleanedObs['audit']);
         return;
     }
 
@@ -37,7 +38,8 @@ add_hook('DailyCronJob', 1, function () {
     $processedFollowups = crmconnector_process_due_followups();
     $executedRules = crmconnector_process_automation_rules();
     $cleanedLimits = crmconnector_cleanup_api_rate_limits();
-    crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules . ', API Cleanup: ' . $cleanedLimits);
+    $cleanedObs = crmconnector_cleanup_old_observability_data();
+    crmconnector_log(null, 'daily_cron', 'completed', 'Followups: ' . $processedFollowups . ', Rules: ' . $executedRules . ', API Cleanup: ' . $cleanedLimits . ', Webhooks Cleanup: ' . (int) $cleanedObs['webhooks'] . ', Audit Cleanup: ' . (int) $cleanedObs['audit']);
 });
 
 function crmconnector_handle_auto_sync($userId)

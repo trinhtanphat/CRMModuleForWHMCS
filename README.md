@@ -106,6 +106,12 @@ API token management:
 - Rotate/deactivate tokens in module dashboard (`API Management`)
 - Configure TTL via `API Token TTL Days`
 
+API production capabilities:
+
+- Pagination/filter/sort list endpoints
+- Outbound webhooks with HMAC signature
+- Audit trail snapshots for API mutations
+
 API specs and tools:
 
 - `docs/openapi.crmconnector.json`

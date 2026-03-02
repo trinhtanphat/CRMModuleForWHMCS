@@ -16,7 +16,7 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api.php?resource=leads",
+          "raw": "{{base_url}}/api.php?resource=leads&page=1&per_page=25&sort_by=id&sort_dir=desc",
           "host": [
             "{{base_url}}"
           ],
@@ -27,6 +27,22 @@
             {
               "key": "resource",
               "value": "leads"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "per_page",
+              "value": "25"
+            },
+            {
+              "key": "sort_by",
+              "value": "id"
+            },
+            {
+              "key": "sort_dir",
+              "value": "desc"
             }
           ]
         }
@@ -132,6 +148,111 @@
             {
               "key": "resource",
               "value": "campaigns"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Notes - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userid\": 1,\n  \"note\": \"Note created from API\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=notes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "notes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Followups - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"API Follow-up\",\n  \"userid\": 1,\n  \"status\": \"pending\",\n  \"channel\": \"email\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=followups",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "followups"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Labels - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{api_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"API Label\",\n  \"color\": \"#22aa99\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api.php?resource=labels",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api.php"
+          ],
+          "query": [
+            {
+              "key": "resource",
+              "value": "labels"
             }
           ]
         }
