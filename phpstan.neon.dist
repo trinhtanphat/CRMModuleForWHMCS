@@ -2,5 +2,7 @@ parameters:
     level: 5
     paths:
         - modules/addons/crmconnector
+    scanFiles:
+        - stubs/whmcs-phpstan-stubs.php
     excludePaths:
         - */vendor/*
