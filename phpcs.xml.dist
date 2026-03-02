@@ -7,4 +7,8 @@
     <exclude-pattern>*/vendor/*</exclude-pattern>
 
     <rule ref="PSR12" />
+
+    <exclude name="PSR1.Files.SideEffects.FoundWithSymbols" />
+    <exclude name="Generic.Files.LineLength.TooLong" />
+    <exclude name="Generic.Files.LineLength.MaxExceeded" />
 </ruleset>
