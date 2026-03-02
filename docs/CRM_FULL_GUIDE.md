@@ -146,6 +146,8 @@ Token lifecycle:
 - Token có TTL theo `API Token TTL Days`
 - Có thể deactivate token thủ công
 - Vẫn hỗ trợ fallback `api_token` legacy trong cấu hình
+- Chính sách `Max Active API Tokens` tự disable token cũ khi vượt ngưỡng
+- Có thể giới hạn truy cập theo `API Allowed IPs`
 
 List controls:
 
@@ -158,6 +160,8 @@ Webhook outbound:
 - Cấu hình: `Webhook URL`, `Webhook Secret`, `Webhook Events`
 - Event mặc định: `api_created`, `api_updated`, `api_deleted`
 - Header chữ ký: `X-CRM-Signature: sha256=<hmac>`
+- Header chống replay: `X-CRM-Timestamp`, `X-CRM-Nonce`
+- Chữ ký tạo từ chuỗi: `<timestamp>.<nonce>.<body>`
 
 Audit trail:
 

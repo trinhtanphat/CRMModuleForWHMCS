@@ -313,6 +313,34 @@ Xác nhận module hoạt động ổn định cho:
   - Audit table có record create/update/delete.
   - `before_snapshot` và `after_snapshot` đúng ngữ cảnh.
 
+### TC-33 API IP allowlist enforcement
+
+- Steps:
+  1. Cấu hình `API Allowed IPs` chỉ chứa IP A.
+  2. Gọi API từ IP B.
+  3. Gọi API từ IP A.
+- Expected:
+  - IP B nhận 403.
+  - IP A truy cập bình thường (nếu token hợp lệ).
+
+### TC-34 Token max-active rotation policy
+
+- Steps:
+  1. Set `Max Active API Tokens = 2`.
+  2. Rotate 3 token liên tiếp.
+- Expected:
+  - Chỉ còn 2 token mới nhất active.
+  - Token cũ nhất tự chuyển `is_active = no`.
+
+### TC-35 Webhook anti-replay headers
+
+- Steps:
+  1. Trigger API mutation để phát webhook.
+  2. Kiểm tra request headers nhận được.
+- Expected:
+  - Có `X-CRM-Timestamp` và `X-CRM-Nonce`.
+  - Signature verify theo format `<timestamp>.<nonce>.<body>`.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:

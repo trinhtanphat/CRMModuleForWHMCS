@@ -14,6 +14,10 @@ function crmconnector_api_handle_request()
 {
     header('Content-Type: application/json; charset=utf-8');
 
+    if (!crmconnector_api_ip_allowed()) {
+        crmconnector_api_response(403, ['success' => false, 'message' => 'IP not allowed']);
+    }
+
     $token = crmconnector_api_extract_token();
     if ($token === '') {
         crmconnector_api_response(401, ['success' => false, 'message' => 'Unauthorized']);
@@ -455,6 +459,25 @@ function crmconnector_api_extract_token()
     }
 
     return trim((string) ($_GET['token'] ?? $_POST['token'] ?? ''));
+}
+
+function crmconnector_api_ip_allowed()
+{
+    $allowlistRaw = trim((string) crmconnector_get_setting('api_allowed_ips', ''));
+    if ($allowlistRaw === '') {
+        return true;
+    }
+
+    $clientIp = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($clientIp === '') {
+        return false;
+    }
+
+    $allowed = array_filter(array_map('trim', explode(',', $allowlistRaw)), function ($ip) {
+        return $ip !== '';
+    });
+
+    return in_array($clientIp, $allowed, true);
 }
 
 function crmconnector_api_validate_token($token)

@@ -111,6 +111,8 @@ API production capabilities:
 - Pagination/filter/sort list endpoints
 - Outbound webhooks with HMAC signature
 - Audit trail snapshots for API mutations
+- API IP allowlist controls
+- Token rotation policy with max-active auto-disable
 
 API specs and tools:
 

@@ -27,8 +27,8 @@ const CRMCONNECTOR_API_RATE_LIMITS_TABLE = 'mod_crmconnector_api_rate_limits';
 const CRMCONNECTOR_API_TOKENS_TABLE = 'mod_crmconnector_api_tokens';
 const CRMCONNECTOR_WEBHOOK_DELIVERIES_TABLE = 'mod_crmconnector_webhook_deliveries';
 const CRMCONNECTOR_AUDIT_TRAIL_TABLE = 'mod_crmconnector_audit_trail';
-const CRMCONNECTOR_MODULE_VERSION = '1.5.0';
-const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.5';
+const CRMCONNECTOR_MODULE_VERSION = '1.6.0';
+const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.6';
 
 function crmconnector_config()
 {
@@ -125,6 +125,19 @@ function crmconnector_config()
                 'Size' => '6',
                 'Default' => '25',
                 'Description' => 'Default pagination size for API list endpoints.',
+            ],
+            'api_allowed_ips' => [
+                'FriendlyName' => 'API Allowed IPs',
+                'Type' => 'text',
+                'Size' => '80',
+                'Description' => 'Optional comma-separated IP allowlist for API access.',
+            ],
+            'api_max_active_tokens' => [
+                'FriendlyName' => 'Max Active API Tokens',
+                'Type' => 'text',
+                'Size' => '6',
+                'Default' => '5',
+                'Description' => 'Auto-disable oldest active tokens when exceeding this number.',
             ],
         ],
     ];
@@ -1756,6 +1769,24 @@ function crmconnector_rotate_api_token()
         'last_used_at' => null,
     ]);
 
+    $maxActiveTokens = (int) crmconnector_get_setting('api_max_active_tokens', '5');
+    if ($maxActiveTokens > 0) {
+        $activeTokens = Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)
+            ->where('is_active', 'yes')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $index = 0;
+        foreach ($activeTokens as $activeToken) {
+            $index++;
+            if ($index > $maxActiveTokens) {
+                Capsule::table(CRMCONNECTOR_API_TOKENS_TABLE)
+                    ->where('id', (int) $activeToken->id)
+                    ->update(['is_active' => 'no']);
+            }
+        }
+    }
+
     crmconnector_log(null, 'rotate_api_token', 'completed', 'Created API token: ' . $name . ' (last4 ' . $last4 . ')');
     return 'New API token created. Copy now (shown once): ' . $tokenPlain;
 }
@@ -1828,6 +1859,8 @@ function crmconnector_dispatch_webhook($eventName, array $payload)
     }
 
     $secret = (string) crmconnector_get_setting('webhook_secret', '');
+    $timestamp = (string) time();
+    $nonce = bin2hex(random_bytes(8));
     $bodyArray = [
         'event' => $eventName,
         'timestamp' => gmdate('c'),
@@ -1838,7 +1871,7 @@ function crmconnector_dispatch_webhook($eventName, array $payload)
         return;
     }
 
-    $signature = hash_hmac('sha256', $body, $secret);
+    $signature = hash_hmac('sha256', $timestamp . '.' . $nonce . '.' . $body, $secret);
     $curl = curl_init($url);
     curl_setopt_array($curl, [
         CURLOPT_POST => true,
@@ -1847,6 +1880,8 @@ function crmconnector_dispatch_webhook($eventName, array $payload)
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'X-CRM-Event: ' . $eventName,
+            'X-CRM-Timestamp: ' . $timestamp,
+            'X-CRM-Nonce: ' . $nonce,
             'X-CRM-Signature: sha256=' . $signature,
         ],
         CURLOPT_CONNECTTIMEOUT => 5,
