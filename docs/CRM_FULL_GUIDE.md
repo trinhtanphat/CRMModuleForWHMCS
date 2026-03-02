@@ -73,6 +73,7 @@ CRM Connector là module CRM mở rộng trong WHMCS, gồm:
 - Tạo campaign với trạng thái
 - Lưu mô tả chiến dịch
 - Gán campaign cho lead qua `Lead-Campaign Assignment`
+- Lọc lead theo `Campaign + Lead Status`
 
 ### 5.5 Automation Rules
 
@@ -83,6 +84,7 @@ CRM Connector là module CRM mở rộng trong WHMCS, gồm:
 
 - Tạo contact types tùy chỉnh
 - Tạo labels phục vụ board/pipeline
+- Gán lead vào label và quản lý bằng board theo labels (drag & drop)
 
 ### 5.7 Permissions Matrix by Action
 

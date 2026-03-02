@@ -21,9 +21,10 @@ const CRMCONNECTOR_LABELS_TABLE = 'mod_crmconnector_labels';
 const CRMCONNECTOR_CONTACT_TYPES_TABLE = 'mod_crmconnector_contact_types';
 const CRMCONNECTOR_WEBFORMS_TABLE = 'mod_crmconnector_webforms';
 const CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE = 'mod_crmconnector_lead_campaigns';
+const CRMCONNECTOR_LEAD_LABELS_TABLE = 'mod_crmconnector_lead_labels';
 const CRMCONNECTOR_PERMISSIONS_TABLE = 'mod_crmconnector_permissions';
-const CRMCONNECTOR_MODULE_VERSION = '1.2.0';
-const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.1';
+const CRMCONNECTOR_MODULE_VERSION = '1.3.0';
+const CRMCONNECTOR_SCHEMA_VERSION = '2026.03.02.2';
 
 function crmconnector_config()
 {
@@ -218,6 +219,15 @@ function crmconnector_activate()
             });
         }
 
+        if (!Capsule::schema()->hasTable(CRMCONNECTOR_LEAD_LABELS_TABLE)) {
+            Capsule::schema()->create(CRMCONNECTOR_LEAD_LABELS_TABLE, function ($table) {
+                $table->increments('id');
+                $table->integer('lead_id')->unsigned();
+                $table->integer('label_id')->unsigned();
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+
         if (!Capsule::schema()->hasTable(CRMCONNECTOR_PERMISSIONS_TABLE)) {
             Capsule::schema()->create(CRMCONNECTOR_PERMISSIONS_TABLE, function ($table) {
                 $table->increments('id');
@@ -399,6 +409,45 @@ function crmconnector_output($vars)
 
     $permissionRules = crmconnector_get_permission_rules();
     $actionKeys = crmconnector_get_action_keys();
+    $selectedCampaignId = (int) ($_GET['filter_campaign_id'] ?? 0);
+    $selectedLeadStatus = trim((string) ($_GET['filter_lead_status'] ?? ''));
+
+    $filteredCampaignLeads = [];
+    if ($selectedCampaignId > 0) {
+        $query = Capsule::table(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE)
+            ->leftJoin(CRMCONNECTOR_LEADS_TABLE, CRMCONNECTOR_LEADS_TABLE . '.id', '=', CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.lead_id')
+            ->select(
+                CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.id',
+                CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.campaign_id',
+                CRMCONNECTOR_LEADS_TABLE . '.id as lead_id',
+                CRMCONNECTOR_LEADS_TABLE . '.name as lead_name',
+                CRMCONNECTOR_LEADS_TABLE . '.email as lead_email',
+                CRMCONNECTOR_LEADS_TABLE . '.status as lead_status'
+            )
+            ->where(CRMCONNECTOR_LEAD_CAMPAIGNS_TABLE . '.campaign_id', $selectedCampaignId);
+
+        if ($selectedLeadStatus !== '') {
+            $query->where(CRMCONNECTOR_LEADS_TABLE . '.status', $selectedLeadStatus);
+        }
+
+        $filteredCampaignLeads = $query->orderBy(CRMCONNECTOR_LEADS_TABLE . '.id', 'desc')->limit(200)->get();
+    }
+
+    $leadLabelAssignments = Capsule::table(CRMCONNECTOR_LEAD_LABELS_TABLE)
+        ->leftJoin(CRMCONNECTOR_LEADS_TABLE, CRMCONNECTOR_LEADS_TABLE . '.id', '=', CRMCONNECTOR_LEAD_LABELS_TABLE . '.lead_id')
+        ->leftJoin(CRMCONNECTOR_LABELS_TABLE, CRMCONNECTOR_LABELS_TABLE . '.id', '=', CRMCONNECTOR_LEAD_LABELS_TABLE . '.label_id')
+        ->select(
+            CRMCONNECTOR_LEAD_LABELS_TABLE . '.id',
+            CRMCONNECTOR_LEAD_LABELS_TABLE . '.lead_id',
+            CRMCONNECTOR_LEAD_LABELS_TABLE . '.label_id',
+            CRMCONNECTOR_LEADS_TABLE . '.name as lead_name',
+            CRMCONNECTOR_LABELS_TABLE . '.name as label_name',
+            CRMCONNECTOR_LABELS_TABLE . '.color as label_color',
+            CRMCONNECTOR_LEAD_LABELS_TABLE . '.created_at'
+        )
+        ->orderBy(CRMCONNECTOR_LEAD_LABELS_TABLE . '.id', 'desc')
+        ->limit(300)
+        ->get();
 
     echo '<h2>CRM Connector Dashboard</h2>';
     echo '<p>Manual sync controls and recent synchronization status.</p>';
@@ -607,6 +656,36 @@ function crmconnector_output($vars)
     }
     echo '</tbody></table>';
 
+    echo '<h4>Campaign Filter by Lead Status</h4>';
+    echo '<form method="get" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo '<input type="hidden" name="module" value="crmconnector">';
+    echo '<label>Campaign: <select name="filter_campaign_id">';
+    echo '<option value="0">-- Select campaign --</option>';
+    foreach ($campaigns as $campaign) {
+        $isSelected = ((int) $campaign->id === $selectedCampaignId) ? ' selected' : '';
+        echo '<option value="' . (int) $campaign->id . '"' . $isSelected . '>' . htmlspecialchars((string) $campaign->name) . '</option>';
+    }
+    echo '</select></label> ';
+    echo '<label>Lead Status: <select name="filter_lead_status">';
+    $statusOptions = ['', 'new', 'active', 'won', 'lost'];
+    foreach ($statusOptions as $statusOption) {
+        $display = $statusOption === '' ? '-- Any --' : $statusOption;
+        $isSelected = ($statusOption === $selectedLeadStatus) ? ' selected' : '';
+        echo '<option value="' . htmlspecialchars($statusOption) . '"' . $isSelected . '>' . htmlspecialchars($display) . '</option>';
+    }
+    echo '</select></label> ';
+    echo '<button type="submit" class="btn btn-default">Apply Filter</button>';
+    echo '</form>';
+
+    echo '<table class="table table-striped"><thead><tr><th>Lead ID</th><th>Name</th><th>Email</th><th>Status</th></tr></thead><tbody>';
+    foreach ($filteredCampaignLeads as $filteredLead) {
+        echo '<tr><td>' . (int) ($filteredLead->lead_id ?? 0) . '</td><td>' . htmlspecialchars((string) ($filteredLead->lead_name ?? '')) . '</td><td>' . htmlspecialchars((string) ($filteredLead->lead_email ?? '')) . '</td><td>' . htmlspecialchars((string) ($filteredLead->lead_status ?? '')) . '</td></tr>';
+    }
+    if (count($filteredCampaignLeads) === 0) {
+        echo '<tr><td colspan="4">No leads found for current filter.</td></tr>';
+    }
+    echo '</tbody></table>';
+
     echo '<h4>Lead-Campaign Assignment</h4>';
     echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
     echo generate_token('form');
@@ -687,6 +766,33 @@ function crmconnector_output($vars)
         echo '<tr><td colspan="3">No labels yet.</td></tr>';
     }
     echo '</tbody></table>';
+
+    echo '<h4>Assign Lead to Label</h4>';
+    echo '<form method="post" action="' . htmlspecialchars($moduleLink) . '" style="margin-bottom:12px;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="assign_lead_label">';
+    echo '<label>Lead ID: <input type="number" min="1" name="label_assignment_lead_id" required></label> ';
+    echo '<label>Label ID: <input type="number" min="1" name="label_assignment_label_id" required></label> ';
+    echo '<button type="submit" class="btn btn-primary">Assign Label</button>';
+    echo '</form>';
+
+    echo '<table class="table table-striped"><thead><tr><th>ID</th><th>Lead</th><th>Label</th><th>Color</th><th>Assigned At</th></tr></thead><tbody>';
+    foreach ($leadLabelAssignments as $leadLabelAssignment) {
+        echo '<tr><td>' . (int) $leadLabelAssignment->id . '</td><td>' . htmlspecialchars((string) ($leadLabelAssignment->lead_name ?? '-')) . '</td><td>' . htmlspecialchars((string) ($leadLabelAssignment->label_name ?? '-')) . '</td><td>' . htmlspecialchars((string) ($leadLabelAssignment->label_color ?? '')) . '</td><td>' . htmlspecialchars((string) ($leadLabelAssignment->created_at ?? '')) . '</td></tr>';
+    }
+    if (count($leadLabelAssignments) === 0) {
+        echo '<tr><td colspan="5">No lead-label assignments yet.</td></tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h4>Lead Board by Labels (Drag & Drop)</h4>';
+    echo '<form id="crmconnector-label-board-form" method="post" action="' . htmlspecialchars($moduleLink) . '" style="display:none;">';
+    echo generate_token('form');
+    echo '<input type="hidden" name="crmconnector_action" value="move_lead_label">';
+    echo '<input type="hidden" name="move_lead_id" id="crmconnector-move-lead-id" value="">';
+    echo '<input type="hidden" name="move_label_id" id="crmconnector-move-label-id" value="">';
+    echo '</form>';
+    crmconnector_render_label_board($labels, $leadLabelAssignments);
 
     echo '<h3>Web Forms</h3>';
     echo '<p>Public endpoint: modules/addons/crmconnector/webform.php</p>';
@@ -831,6 +937,14 @@ function crmconnector_handle_post_action(array $vars)
 
     if ($action === 'save_permission_rule') {
         return crmconnector_save_permission_rule();
+    }
+
+    if ($action === 'assign_lead_label') {
+        return crmconnector_assign_lead_label();
+    }
+
+    if ($action === 'move_lead_label') {
+        return crmconnector_move_lead_label();
     }
 
     return 'No action executed.';
@@ -1365,6 +1479,97 @@ function crmconnector_save_permission_rule()
     return 'Permission rule saved.';
 }
 
+function crmconnector_assign_lead_label()
+{
+    $leadId = (int) ($_POST['label_assignment_lead_id'] ?? 0);
+    $labelId = (int) ($_POST['label_assignment_label_id'] ?? 0);
+
+    if ($leadId <= 0 || $labelId <= 0) {
+        return 'Lead ID and Label ID are required.';
+    }
+
+    $leadExists = Capsule::table(CRMCONNECTOR_LEADS_TABLE)->where('id', $leadId)->exists();
+    $labelExists = Capsule::table(CRMCONNECTOR_LABELS_TABLE)->where('id', $labelId)->exists();
+    if (!$leadExists || !$labelExists) {
+        return 'Invalid lead or label.';
+    }
+
+    Capsule::table(CRMCONNECTOR_LEAD_LABELS_TABLE)->where('lead_id', $leadId)->delete();
+    Capsule::table(CRMCONNECTOR_LEAD_LABELS_TABLE)->insert([
+        'lead_id' => $leadId,
+        'label_id' => $labelId,
+        'created_at' => Capsule::raw('NOW()'),
+    ]);
+
+    crmconnector_log(null, 'assign_lead_label', 'completed', 'Lead #' . $leadId . ' assigned to label #' . $labelId);
+    return 'Lead assigned to label successfully.';
+}
+
+function crmconnector_move_lead_label()
+{
+    $leadId = (int) ($_POST['move_lead_id'] ?? 0);
+    $labelId = (int) ($_POST['move_label_id'] ?? 0);
+
+    if ($leadId <= 0 || $labelId <= 0) {
+        return 'Invalid board move request.';
+    }
+
+    $_POST['label_assignment_lead_id'] = $leadId;
+    $_POST['label_assignment_label_id'] = $labelId;
+    return crmconnector_assign_lead_label();
+}
+
+function crmconnector_render_label_board($labels, $leadLabelAssignments)
+{
+    $leadByLabel = [];
+    foreach ($labels as $label) {
+        $leadByLabel[(int) $label->id] = [];
+    }
+
+    foreach ($leadLabelAssignments as $assignment) {
+        $labelId = (int) ($assignment->label_id ?? 0);
+        if (!isset($leadByLabel[$labelId])) {
+            $leadByLabel[$labelId] = [];
+        }
+        $leadByLabel[$labelId][] = $assignment;
+    }
+
+    echo '<div style="display:flex; gap:12px; overflow-x:auto; margin-bottom:20px;">';
+    foreach ($labels as $label) {
+        $labelId = (int) $label->id;
+        echo '<div class="panel panel-default crm-label-col" data-label-id="' . $labelId . '" style="min-width:230px; width:230px;">';
+        echo '<div class="panel-heading" style="border-left:6px solid ' . htmlspecialchars((string) $label->color) . ';"><strong>' . htmlspecialchars((string) $label->name) . '</strong></div>';
+        echo '<div class="panel-body" style="min-height:150px;">';
+        foreach ($leadByLabel[$labelId] as $assignment) {
+            echo '<div class="well well-sm crm-label-card" draggable="true" data-lead-id="' . (int) $assignment->lead_id . '" style="cursor:move;">';
+            echo '<div><strong>#' . (int) $assignment->lead_id . '</strong> ' . htmlspecialchars((string) ($assignment->lead_name ?? '-')) . '</div>';
+            echo '</div>';
+        }
+        if (count($leadByLabel[$labelId]) === 0) {
+            echo '<div class="text-muted">Drop lead here</div>';
+        }
+        echo '</div></div>';
+    }
+    echo '</div>';
+
+    echo '<script>';
+    echo 'document.querySelectorAll(".crm-label-card").forEach(function(card){';
+    echo 'card.addEventListener("dragstart",function(e){e.dataTransfer.setData("text/plain", card.getAttribute("data-lead-id"));});';
+    echo '});';
+    echo 'document.querySelectorAll(".crm-label-col .panel-body").forEach(function(col){';
+    echo 'col.addEventListener("dragover",function(e){e.preventDefault();});';
+    echo 'col.addEventListener("drop",function(e){';
+    echo 'e.preventDefault();';
+    echo 'var leadId=e.dataTransfer.getData("text/plain");';
+    echo 'var labelId=col.parentElement.getAttribute("data-label-id");';
+    echo 'document.getElementById("crmconnector-move-lead-id").value=leadId;';
+    echo 'document.getElementById("crmconnector-move-label-id").value=labelId;';
+    echo 'document.getElementById("crmconnector-label-board-form").submit();';
+    echo '});';
+    echo '});';
+    echo '</script>';
+}
+
 function crmconnector_get_action_keys()
 {
     return [
@@ -1379,6 +1584,8 @@ function crmconnector_get_action_keys()
         'add_followup',
         'add_campaign',
         'assign_lead_campaign',
+        'assign_lead_label',
+        'move_lead_label',
         'add_rule',
         'add_contact_type',
         'add_label',

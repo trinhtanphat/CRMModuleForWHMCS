@@ -25,6 +25,8 @@ Safe route: implement original code that achieves similar outcomes (feature pari
   - Webform definitions + public intake endpoint
   - Leads CSV import/export
   - Daily cron processing for due follow-ups and automation rule checks
+  - Campaign filter by lead status
+  - Label board with drag-drop lead movement
 
 ## All-Phase Plan
 

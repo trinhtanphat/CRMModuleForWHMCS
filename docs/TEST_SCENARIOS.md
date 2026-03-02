@@ -207,6 +207,23 @@ Xác nhận module hoạt động ổn định cho:
   - Action bị chặn với permission denied.
   - Admin B vẫn chạy được action khác không bị chặn.
 
+### TC-22 Campaign filter by lead status
+
+- Steps:
+  1. Tạo campaign, gán nhiều lead với status khác nhau.
+  2. Chọn campaign và status filter trên dashboard.
+- Expected:
+  - Danh sách chỉ hiển thị lead đúng campaign và status.
+
+### TC-23 Label board drag-drop
+
+- Steps:
+  1. Tạo labels, gán lead vào label A.
+  2. Kéo lead card từ cột label A sang label B.
+- Expected:
+  - Mapping lead-label được cập nhật.
+  - Bảng assignment và board phản ánh label mới.
+
 ## 5) Smoke test trước release
 
 Chạy tối thiểu:
